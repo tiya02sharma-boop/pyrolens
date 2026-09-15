@@ -17,9 +17,11 @@ from importlib import import_module
 from datetime import date, time
 from functools import lru_cache
 from pathlib import Path
+import json
+import urllib.parse
+import urllib.request
 from typing import Annotated, Literal
 
-import httpx
 import joblib
 import numpy as np
 import pandas as pd
@@ -540,6 +542,96 @@ def poll_firms(x_agni_poll_token: Annotated[str | None, Header()] = None) -> dic
 
 
 _geocode_cache: dict[tuple[float, float], dict] = {}
+_facility_cache: dict[tuple[float, float], dict] = {}
+
+
+def facility_type_from_tags(tags: dict[str, str]) -> str:
+    """Translate OpenStreetMap facility tags into cautious user-facing types."""
+    values = " ".join(str(value).lower() for value in tags.values())
+    if any(term in values for term in ("lng", "liquefied natural gas")):
+        return "LNG terminal"
+    if any(term in values for term in ("refinery", "petroleum", "oil refinery")):
+        return "oil refinery"
+    if any(term in values for term in ("petrochemical", "chemical")):
+        return "petrochemical facility"
+    if any(term in values for term in ("steel", "ironworks", "iron works")):
+        return "steel industry"
+    if tags.get("power") == "plant":
+        return "power plant"
+    if any(term in values for term in ("mine", "quarry", "mining")):
+        return "mining operation"
+    return "industrial facility"
+
+
+@app.get("/api/facilities/nearby")
+def nearby_facility(
+    lat: Annotated[float, Query(ge=-90, le=90)],
+    lng: Annotated[float, Query(ge=-180, le=180)],
+) -> dict:
+    """Find the nearest tagged industrial facility in OpenStreetMap.
+
+    This is spatial context for an industrial ML result, not a second model
+    classification. It runs only when an industrial point is inspected.
+    """
+    key = (round(lat, 3), round(lng, 3))
+    if key in _facility_cache:
+        return _facility_cache[key]
+
+    query = f"""
+        [out:json][timeout:12];
+        (
+          nwr(around:10000,{lat},{lng})[\"man_made\"=\"works\"];
+          nwr(around:10000,{lat},{lng})[\"industrial\"];
+          nwr(around:10000,{lat},{lng})[\"power\"=\"plant\"];
+        );
+        out center tags;
+    """
+    request = urllib.request.Request(
+        "https://overpass-api.de/api/interpreter",
+        data=urllib.parse.urlencode({"data": query}).encode(),
+        headers={
+            "User-Agent": "AGNI-Pyrolens/1.0 (industrial-facility context)",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=15.0) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception:
+        return {"facility": None, "source": "OpenStreetMap", "error": "Facility lookup unavailable"}
+
+    candidates = []
+    for element in payload.get("elements", []):
+        tags = element.get("tags", {})
+        coords = element.get("center", element)
+        facility_lat, facility_lng = coords.get("lat"), coords.get("lon")
+        if facility_lat is None or facility_lng is None:
+            continue
+        distance_km = float(np.sqrt(
+            (float(facility_lat) - lat) ** 2
+            + ((float(facility_lng) - lng) * np.cos(np.radians(lat))) ** 2
+        ) * 111)
+        candidates.append((distance_km, tags))
+
+    if not candidates:
+        result = {"facility": None, "source": "OpenStreetMap"}
+    else:
+        distance_km, tags = min(candidates, key=lambda item: item[0])
+        result = {
+            "facility": {
+                "name": tags.get("name") or tags.get("operator") or "Unnamed mapped facility",
+                "type": facility_type_from_tags(tags),
+                "distance_km": round(distance_km, 1),
+                "evidence": "Nearby facility mapped in OpenStreetMap",
+            },
+            "source": "OpenStreetMap",
+        }
+    if len(_facility_cache) > 1000:
+        _facility_cache.clear()
+    _facility_cache[key] = result
+    return result
 
 
 @app.get("/api/geocode/reverse")
@@ -554,7 +646,6 @@ def reverse_geocode(
     if key in _geocode_cache:
         return _geocode_cache[key]
 
-    url = "https://nominatim.openstreetmap.org/reverse"
     params = {
         "format": "jsonv2",
         "lat": rounded_lat,
@@ -562,15 +653,18 @@ def reverse_geocode(
         "zoom": 14,
         "addressdetails": 1,
     }
-    headers = {
-        "User-Agent": "AGNI-Pyrolens/1.0 (NASA-FIRMS Dashboard; contact: support@pyrolens.local)",
-        "Accept": "application/json",
-    }
+    url = f"https://nominatim.openstreetmap.org/reverse?{urllib.parse.urlencode(params)}"
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "AGNI-Pyrolens/1.0 (NASA-FIRMS Dashboard; contact: support@pyrolens.local)",
+            "Accept": "application/json",
+        },
+    )
     try:
-        with httpx.Client(timeout=4.0) as client:
-            resp = client.get(url, params=params, headers=headers)
-            if resp.status_code == 200:
-                data = resp.json()
+        with urllib.request.urlopen(req, timeout=4.0) as resp:
+            if resp.status == 200:
+                data = json.loads(resp.read().decode("utf-8"))
                 place = data.get("display_name") or data.get("name")
                 result = {"place": place, "lat": rounded_lat, "lon": rounded_lon}
                 if place:
@@ -578,7 +672,7 @@ def reverse_geocode(
                         _geocode_cache.clear()
                     _geocode_cache[key] = result
                 return result
-            return {"place": None, "lat": rounded_lat, "lon": rounded_lon, "error": f"OSM status {resp.status_code}"}
+            return {"place": None, "lat": rounded_lat, "lon": rounded_lon, "error": f"OSM status {resp.status}"}
     except Exception as exc:
         return {"place": None, "lat": rounded_lat, "lon": rounded_lon, "error": str(exc)}
 

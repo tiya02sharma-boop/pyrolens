@@ -5,6 +5,7 @@ const geocodeCache = new Map();
 
 export default function DetailPanel({ detection }) {
   const [place, setPlace] = useState(null);
+  const [facilityContext, setFacilityContext] = useState(null);
 
   useEffect(() => {
     if (!detection || detection.lat == null || detection.lng == null) {
@@ -78,6 +79,26 @@ export default function DetailPanel({ detection }) {
     };
   }, [detection?.id, detection?.lat, detection?.lng]);
 
+  useEffect(() => {
+    if (!detection || detection.category !== 'industrial') {
+      setFacilityContext(null);
+      return undefined;
+    }
+    let isMounted = true;
+    const controller = new AbortController();
+    setFacilityContext({ loading: true });
+    fetch(`/api/facilities/nearby?lat=${detection.lat}&lng=${detection.lng}`, { signal: controller.signal })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error('Facility lookup unavailable')))
+      .then((data) => { if (isMounted) setFacilityContext(data); })
+      .catch((error) => {
+        if (isMounted && error.name !== 'AbortError') setFacilityContext({ error: 'Facility lookup unavailable' });
+      });
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
+  }, [detection?.id, detection?.category, detection?.lat, detection?.lng]);
+
   if (!detection) {
     return (
       <section className="panel detail-panel detail-panel--empty">
@@ -139,6 +160,25 @@ export default function DetailPanel({ detection }) {
           </div>
         </div>
       </div>
+
+      {detection.category === 'industrial' && (
+        <div className="facility-context">
+          <div className="model-explain__title">NEARBY FACILITY CONTEXT</div>
+          {facilityContext?.loading && <p>Checking nearby mapped facilities…</p>}
+          {facilityContext?.facility && (
+            <>
+              <strong>{facilityContext.facility.name}</strong>
+              <p>
+                Likely facility type: {facilityContext.facility.type} · {facilityContext.facility.distance_km} km away
+              </p>
+              <small>{facilityContext.facility.evidence} · Source: {facilityContext.source}</small>
+            </>
+          )}
+          {facilityContext && !facilityContext.loading && !facilityContext.facility && (
+            <p>No mapped industrial facility was found within 10 km. This does not change the ML classification.</p>
+          )}
+        </div>
+      )}
 
       {detection.explanation && (
         <div className="model-explain model-explain--detail">

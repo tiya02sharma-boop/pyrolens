@@ -449,6 +449,25 @@ body {
   gap: 12px;
 }
 
+.facility-context {
+  border-top: 1px solid var(--panel-border);
+  margin-top: 14px;
+  padding-top: 12px;
+  color: var(--text-dim);
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.facility-context strong {
+  color: var(--text);
+  display: block;
+  font-size: 11px;
+}
+
+.facility-context p {
+  margin: 4px 0;
+}
+
 .classify-result__headline {
   font-size: 14px;
   font-weight: 700;
