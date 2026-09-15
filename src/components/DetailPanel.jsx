@@ -3,7 +3,7 @@ import { CATEGORIES } from '../data/mockData.js';
 
 const geocodeCache = new Map();
 
-export default function DetailPanel({ detection }) {
+export default function DetailPanel({ detection, onUseInClassifier }) {
   const [place, setPlace] = useState(null);
   const [facilityContext, setFacilityContext] = useState(null);
 
@@ -232,6 +232,15 @@ export default function DetailPanel({ detection }) {
       )}
 
       <div className="detail-actions">
+        {onUseInClassifier && (
+          <button
+            className="ghost-btn ghost-btn--highlight"
+            type="button"
+            onClick={() => onUseInClassifier(detection)}
+          >
+            LOAD INTO CLASSIFIER
+          </button>
+        )}
         <button className="ghost-btn" type="button">
           EXPORT DETECTION
         </button>

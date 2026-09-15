@@ -176,6 +176,26 @@ export default function App() {
     setManualFocus([result.lat, result.lng]);
   }
 
+  function handlePointClick(detection) {
+    if (pickMode) {
+      setPickedCoords({
+        lat: Number(detection.lat).toFixed(4),
+        lng: Number(detection.lng).toFixed(4),
+        detection,
+      });
+      setPickMode(false);
+    }
+  }
+
+  function handleUseHotspotInClassifier(detection) {
+    setPickedCoords({
+      lat: Number(detection.lat).toFixed(4),
+      lng: Number(detection.lng).toFixed(4),
+      detection,
+    });
+    setPickMode(false);
+  }
+
   return (
     <div className={`app${pickMode ? ' app--pick' : ''}`}>
       <div className="app__globe">
@@ -186,6 +206,7 @@ export default function App() {
           onSelect={setSelectedId}
           flyTo={flyTo}
           onGlobeClick={handleGlobeClick}
+          onPointClick={handlePointClick}
         />
       </div>
 
@@ -216,7 +237,7 @@ export default function App() {
       </div>
 
       <div className="dock dock--right">
-        <DetailPanel detection={selectedDetection} />
+        <DetailPanel detection={selectedDetection} onUseInClassifier={handleUseHotspotInClassifier} />
       </div>
 
       <StatsBar stats={stats} />

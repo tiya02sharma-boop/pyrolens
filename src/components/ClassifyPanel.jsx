@@ -31,13 +31,25 @@ export default function ClassifyPanel({ coords, onCoordsChange, pickMode, onTogg
   })();
 
   useEffect(() => {
+    if (coords?.detection) {
+      const d = coords.detection;
+      if (d.frp != null) setFrp(String(d.frp));
+      if (d.bright_ti4 != null) setBrightTi4(String(d.bright_ti4));
+      if (d.bright_ti5 != null) setBrightTi5(String(d.bright_ti5));
+      if (d.firstDetected) setAcqDate(d.firstDetected);
+      if (d.acqTime) setAcqTime(d.acqTime);
+      if (d.daynight) setDaynight(d.daynight === 'N' ? 'N' : 'D');
+      setFirmsStatus(`HOTSPOT ${d.id} SELECTED · FIRMS PARAMETERS LOADED`);
+      return undefined;
+    }
+
     if (!selectedLocation) {
       setFirmsStatus('');
       return undefined;
     }
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
-      setFirmsStatus('LOOKING UP LATEST FIRMS THERMAL DATA…');
+      setFirmsStatus('FETCHING FIRMS THERMAL SATELLITE DATA…');
       try {
         const response = await fetch(
           `/api/firms/nearest?lat=${selectedLocation.lat}&lng=${selectedLocation.lng}`,
@@ -51,16 +63,16 @@ export default function ClassifyPanel({ coords, onCoordsChange, pickMode, onTogg
         setAcqDate(data.acq_date);
         setAcqTime(data.acq_time);
         setDaynight(data.daynight === 'N' ? 'N' : 'D');
-        setFirmsStatus(`LIVE FIRMS DATA LOADED · ${data.distance_km} KM FROM SELECTED LOCATION`);
+        setFirmsStatus(`FIRMS HOTSPOT LOADED · ${data.distance_km} KM AWAY · ${data.source}`);
       } catch (lookupError) {
         if (lookupError.name !== 'AbortError') setFirmsStatus(lookupError.message);
       }
-    }, 450);
+    }, 200);
     return () => {
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [selectedLocation?.lat, selectedLocation?.lng]);
+  }, [selectedLocation?.lat, selectedLocation?.lng, coords?.detection]);
 
   async function handleClassify(e) {
     e.preventDefault();

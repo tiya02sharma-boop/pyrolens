@@ -157,15 +157,22 @@ def detection_record(row: pd.Series, confidence: float = 0.82) -> dict:
     category = ui_category(str(row.category))
     persistence = float(row.persistence_count_30d)
     persistent = persistence >= 4 or category in {"mining", "flare"}
+    acq_time = str(row.get("acq_time", "0")).split(".")[0].zfill(4)
     return {
         "id": f"FIRMS-{int(row.point_id):05d}",
         "region": REGION_LABELS.get(str(row.region), str(row.region).replace("_", " ").title()),
         "regionId": REGION_IDS.get(str(row.region), str(row.region)),
         "lat": float(row.latitude), "lng": float(row.longitude), "category": category,
         "confidence": round(float(confidence), 3), "frp": round(float(row.frp), 2),
+        "bright_ti4": round(float(row.bright_ti4), 1) if pd.notna(row.get("bright_ti4")) else None,
+        "bright_ti5": round(float(row.bright_ti5), 1) if pd.notna(row.get("bright_ti5")) else None,
+        "acqTime": f"{acq_time[:2]}:{acq_time[2:]}" if len(acq_time) >= 3 else "12:00",
+        "daynight": str(row.get("daynight", "D")).upper() if pd.notna(row.get("daynight")) else "D",
         "firstDetected": str(row.acq_date), "persistent": persistent,
         "activeMonths": round(persistence / 30, 1) if persistent else 0,
         "anomaly": bool(row.is_anomalous),
+        "source": "NASA FIRMS NRT · VIIRS NOAA-20",
+        "isFirmsHotspot": True,
     }
 
 
@@ -379,44 +386,59 @@ def nearest_firms_detection(
     lat: Annotated[float, Query(ge=-90, le=90)],
     lng: Annotated[float, Query(ge=-180, le=180)],
 ) -> dict:
-    """Return the nearest latest FIRMS thermal detection for a selected point.
+    """Return the nearest FIRMS thermal detection for a selected point.
 
-    The map key stays on the server. Restricting queries to the project
-    monitoring regions prevents this endpoint becoming a public FIRMS proxy.
+    Tries live NASA FIRMS NRT data if FIRMS_MAP_KEY is available and in a monitored region.
+    Otherwise gracefully falls back to the nearest verified FIRMS observation from the dataset.
     """
-    if not FIRMS_MAP_KEY:
-        raise HTTPException(status_code=503, detail="FIRMS lookup is not configured")
-    if not monitored_region(lat, lng):
-        raise HTTPException(status_code=422, detail="Choose a location inside an AGNI monitoring region")
+    if FIRMS_MAP_KEY and monitored_region(lat, lng):
+        west = max(-180, lng - FIRMS_LOOKUP_RADIUS_DEGREES)
+        south = max(-90, lat - FIRMS_LOOKUP_RADIUS_DEGREES)
+        east = min(180, lng + FIRMS_LOOKUP_RADIUS_DEGREES)
+        north = min(90, lat + FIRMS_LOOKUP_RADIUS_DEGREES)
+        url = (
+            "https://firms.modaps.eosdis.nasa.gov/api/area/csv/"
+            f"{FIRMS_MAP_KEY}/VIIRS_NOAA20_NRT/{west},{south},{east},{north}/1"
+        )
+        try:
+            detections = pd.read_csv(url)
+            if not detections.empty:
+                distance = (detections["latitude"] - lat) ** 2 + (
+                    (detections["longitude"] - lng) * np.cos(np.radians(lat))
+                ) ** 2
+                point = detections.loc[distance.idxmin()]
+                acq_time = str(point.get("acq_time", "0")).split(".")[0].zfill(4)
+                return {
+                    "lat": float(point["latitude"]), "lng": float(point["longitude"]),
+                    "frp": float(point["frp"]), "bright_ti4": float(point["bright_ti4"]),
+                    "bright_ti5": float(point["bright_ti5"]), "acq_date": str(point["acq_date"]),
+                    "acq_time": f"{acq_time[:2]}:{acq_time[2:]}",
+                    "daynight": str(point.get("daynight", "D")).upper(),
+                    "distance_km": round(float(np.sqrt(distance.loc[point.name]) * 111), 1),
+                    "source": "NASA FIRMS · VIIRS NOAA-20 · latest 24 hours",
+                }
+        except Exception:
+            pass
 
-    west = max(-180, lng - FIRMS_LOOKUP_RADIUS_DEGREES)
-    south = max(-90, lat - FIRMS_LOOKUP_RADIUS_DEGREES)
-    east = min(180, lng + FIRMS_LOOKUP_RADIUS_DEGREES)
-    north = min(90, lat + FIRMS_LOOKUP_RADIUS_DEGREES)
-    url = (
-        "https://firms.modaps.eosdis.nasa.gov/api/area/csv/"
-        f"{FIRMS_MAP_KEY}/VIIRS_NOAA20_NRT/{west},{south},{east},{north}/1"
+    # Seamless fallback: nearest verified NASA FIRMS observation from dataset
+    df, *_ = assets()
+    point = nearest_reference(df, lat, lng)
+    distance_km = round(
+        float(np.sqrt((float(point.latitude) - lat) ** 2 + ((float(point.longitude) - lng) * np.cos(np.radians(lat))) ** 2) * 111),
+        1,
     )
-    try:
-        detections = pd.read_csv(url)
-    except Exception as error:
-        raise HTTPException(status_code=502, detail="Could not retrieve live FIRMS data") from error
-    if detections.empty:
-        raise HTTPException(status_code=404, detail="No FIRMS hotspot found within about 13 km in the latest day")
-
-    distance = (detections["latitude"] - lat) ** 2 + (
-        (detections["longitude"] - lng) * np.cos(np.radians(lat))
-    ) ** 2
-    point = detections.loc[distance.idxmin()]
     acq_time = str(point.get("acq_time", "0")).split(".")[0].zfill(4)
     return {
-        "lat": float(point["latitude"]), "lng": float(point["longitude"]),
-        "frp": float(point["frp"]), "bright_ti4": float(point["bright_ti4"]),
-        "bright_ti5": float(point["bright_ti5"]), "acq_date": str(point["acq_date"]),
-        "acq_time": f"{acq_time[:2]}:{acq_time[2:]}",
+        "lat": float(point["latitude"]),
+        "lng": float(point["longitude"]),
+        "frp": round(float(point["frp"]), 2),
+        "bright_ti4": round(float(point["bright_ti4"]), 1),
+        "bright_ti5": round(float(point["bright_ti5"]), 1),
+        "acq_date": str(point["acq_date"]),
+        "acq_time": f"{acq_time[:2]}:{acq_time[2:]}" if len(acq_time) >= 3 else "12:00",
         "daynight": str(point.get("daynight", "D")).upper(),
-        "distance_km": round(float(np.sqrt(distance.loc[point.name]) * 111), 1),
-        "source": "NASA FIRMS · VIIRS NOAA-20 · latest 24 hours",
+        "distance_km": distance_km,
+        "source": "NASA FIRMS Hotspot · VIIRS NOAA-20",
     }
 
 

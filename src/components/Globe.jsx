@@ -4,7 +4,7 @@ import { CATEGORIES } from '../data/mockData.js';
 
 const THERMAL_HOTSPOT = '#ff2b24';
 
-export default function Globe({ detections, selectedId, pickedCoords, onSelect, flyTo, onGlobeClick }) {
+export default function Globe({ detections, selectedId, pickedCoords, onSelect, flyTo, onGlobeClick, onPointClick }) {
   const globeRef = useRef();
   const [size, setSize] = useState({
     width: typeof window !== 'undefined' ? window.innerWidth : 1200,
@@ -71,7 +71,10 @@ export default function Globe({ detections, selectedId, pickedCoords, onSelect, 
       pointResolution={8}
       pointsMerge={false}
       pointLabel={(d) => `<b>THERMAL HOTSPOT · ${d.id}</b><br/>AGNI classification: ${CATEGORIES[d.category].label}<br/>${d.frp} MW FRP · ${Math.round(d.confidence * 100)}%`}
-      onPointClick={(d) => onSelect(d.id)}
+      onPointClick={(d) => {
+        onSelect(d.id);
+        if (onPointClick) onPointClick(d);
+      }}
       onGlobeClick={onGlobeClick}
       labelsData={pickedPoint}
       labelLat="lat"
