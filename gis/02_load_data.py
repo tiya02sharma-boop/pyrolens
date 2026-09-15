@@ -26,34 +26,40 @@ def main():
 
     engine = create_engine(DB_URL)
 
+    # Reset the historical snapshot before importing it. Each insert batch is
+    # committed separately below: an external Render database connection can
+    # time out during a large import, and independent commits prevent one
+    # failed batch from rolling back the batches that already completed.
     with engine.begin() as conn:
         conn.execute(text("TRUNCATE TABLE detections RESTART IDENTITY;"))
 
-        rows = df[[
-            "point_id", "region", "acq_date", "latitude", "longitude", "frp",
-            "bright_ti4", "bright_ti5", "daynight", "category",
-            "persistence_count_30d", "is_anomalous", "anomaly_score",
-        ]].copy()
-        rows["confidence"] = 0.9  # placeholder; real per-row confidence comes from model.predict_proba at query time if needed
-        rows = rows.rename(columns={"persistence_count_30d": "persistence_30d"})
+    rows = df[[
+        "point_id", "region", "acq_date", "latitude", "longitude", "frp",
+        "bright_ti4", "bright_ti5", "daynight", "category",
+        "persistence_count_30d", "is_anomalous", "anomaly_score",
+    ]].copy()
+    rows["confidence"] = 0.9  # placeholder; real per-row confidence comes from model.predict_proba at query time if needed
+    rows = rows.rename(columns={"persistence_count_30d": "persistence_30d"})
 
-        print("Inserting rows with geometry...")
-        insert_sql = text("""
-            INSERT INTO detections
-                (point_id, region, acq_date, latitude, longitude, frp,
-                 bright_ti4, bright_ti5, daynight, category, confidence,
-                 persistence_30d, is_anomalous, anomaly_score, geom)
-            VALUES
-                (:point_id, :region, :acq_date, :latitude, :longitude, :frp,
-                 :bright_ti4, :bright_ti5, :daynight, :category, :confidence,
-                 :persistence_30d, :is_anomalous, :anomaly_score,
-                 ST_SetSRID(ST_MakePoint(:longitude, :latitude), 4326))
-        """)
-        records = rows.to_dict(orient="records")
-        batch_size = 5000
-        for i in range(0, len(records), batch_size):
-            conn.execute(insert_sql, records[i:i + batch_size])
-            print(f"  inserted {min(i + batch_size, len(records))}/{len(records)}")
+    print("Inserting rows with geometry...")
+    insert_sql = text("""
+        INSERT INTO detections
+            (point_id, region, acq_date, latitude, longitude, frp,
+             bright_ti4, bright_ti5, daynight, category, confidence,
+             persistence_30d, is_anomalous, anomaly_score, geom)
+        VALUES
+            (:point_id, :region, :acq_date, :latitude, :longitude, :frp,
+             :bright_ti4, :bright_ti5, :daynight, :category, :confidence,
+             :persistence_30d, :is_anomalous, :anomaly_score,
+             ST_SetSRID(ST_MakePoint(:longitude, :latitude), 4326))
+    """)
+    records = rows.to_dict(orient="records")
+    batch_size = 500
+    for i in range(0, len(records), batch_size):
+        batch = records[i:i + batch_size]
+        with engine.begin() as conn:
+            conn.execute(insert_sql, batch)
+        print(f"  inserted {min(i + batch_size, len(records))}/{len(records)}")
 
     print("Done.")
 
