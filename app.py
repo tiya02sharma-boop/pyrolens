@@ -456,9 +456,27 @@ def detections(region: str | None = None, limit: Annotated[int, Query(ge=1, le=1
         return [detection_record(row, confidence) for (_, row), confidence in zip(subset.iterrows(), confidences, strict=True)]
 
     where_clause = "WHERE region = :region" if region and region != "all" else ""
+
+    # Gracefully handle DB tables that predate the FIRMS telemetry columns
+    # by checking which optional columns actually exist before selecting them.
+    optional_cols = {"acq_time", "bright_ti4", "bright_ti5", "daynight"}
+    with engine.connect() as conn:
+        existing = {
+            row[0]
+            for row in conn.execute(text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = 'detections' AND column_name = ANY(:cols)"
+            ), {"cols": list(optional_cols)})
+        }
+
+    def col_expr(name: str) -> str:
+        return name if name in existing else f"NULL AS {name}"
+
     sql = text(f"""
         SELECT id, point_id, region, category, confidence, frp, latitude, longitude,
-               acq_date, acq_time, bright_ti4, bright_ti5, daynight, persistence_30d, is_anomalous
+               acq_date, {col_expr('acq_time')}, {col_expr('bright_ti4')},
+               {col_expr('bright_ti5')}, {col_expr('daynight')},
+               persistence_30d, is_anomalous
         FROM detections
         {where_clause}
         ORDER BY random()
