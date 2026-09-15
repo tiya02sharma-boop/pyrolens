@@ -1,6 +1,7 @@
 """
 Loads outputs/firms_combined_with_predictions_v2.csv into the PostGIS
-`detections` table. Run once (or re-run to refresh after retraining).
+`detections` table. It imports a reproducible 5,000-row prototype sample by
+default; set ``LOAD_LIMIT=0`` to load the full dataset.
 
     python3 gis/02_load_data.py
 """
@@ -11,6 +12,7 @@ from sqlalchemy import create_engine, text
 DB_URL = os.getenv("DATABASE_URL")
 CSV_PATH = "outputs/firms_combined_with_predictions_v2.csv"
 UI_CATEGORY = {"offshore_flare_or_platform": "flare"}
+LOAD_LIMIT = int(os.getenv("LOAD_LIMIT", "5000"))
 
 
 def main():
@@ -23,6 +25,9 @@ def main():
     df["category"] = df["category"].map(lambda c: UI_CATEGORY.get(c, c))
     df = df[~df["category"].isin(["unlabeled"])].copy()
     print(f"  {len(df)} rows after dropping unlabeled")
+    if LOAD_LIMIT > 0 and len(df) > LOAD_LIMIT:
+        df = df.sample(n=LOAD_LIMIT, random_state=42).copy()
+        print(f"  limited to {len(df)} reproducible prototype rows")
 
     engine = create_engine(DB_URL)
 
