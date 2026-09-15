@@ -19,6 +19,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
 
+import httpx
 import joblib
 import numpy as np
 import pandas as pd
@@ -41,6 +42,7 @@ DB_URL = os.getenv("DATABASE_URL")
 engine = create_engine(DB_URL, pool_pre_ping=True) if DB_URL and create_engine else None
 FIRMS_MAP_KEY = os.getenv("FIRMS_MAP_KEY")
 FIRMS_POLL_TOKEN = os.getenv("FIRMS_POLL_TOKEN")
+FIRMS_LOOKUP_RADIUS_DEGREES = 0.12
 
 UI_CATEGORY = {"offshore_flare_or_platform": "flare"}
 REGION_LABELS = {
@@ -169,6 +171,17 @@ def nearest_reference(df: pd.DataFrame, lat: float, lng: float) -> pd.Series:
     """Fill unavailable satellite/context fields from the closest historic FIRMS point."""
     distance = (df.latitude - lat) ** 2 + ((df.longitude - lng) * np.cos(np.radians(lat))) ** 2
     return df.loc[distance.idxmin()].copy()
+
+
+def monitored_region(lat: float, lng: float) -> bool:
+    """Allow public live lookups only inside AGNI's configured monitoring areas."""
+    regions = (
+        (74.0, 29.0, 77.5, 32.5), (86.0, 23.5, 87.5, 24.0),
+        (69.5, 22.0, 70.5, 22.7), (76.8, 28.3, 77.6, 28.9),
+        (-124.5, 32.5, -116.0, 49.0), (-97.5, 27.5, -89.0, 31.0),
+        (-118.0, 46.0, -116.5, 47.5),
+    )
+    return any(west <= lng <= east and south <= lat <= north for west, south, east, north in regions)
 
 
 def _pretty_number(value: float) -> str:
@@ -359,6 +372,52 @@ def health() -> dict:
     return {"status": "ok", "detections": count, "model": "XGBoost v2", "storage": storage}
 
 
+@app.get("/api/firms/nearest")
+def nearest_firms_detection(
+    lat: Annotated[float, Query(ge=-90, le=90)],
+    lng: Annotated[float, Query(ge=-180, le=180)],
+) -> dict:
+    """Return the nearest latest FIRMS thermal detection for a selected point.
+
+    The map key stays on the server. Restricting queries to the project
+    monitoring regions prevents this endpoint becoming a public FIRMS proxy.
+    """
+    if not FIRMS_MAP_KEY:
+        raise HTTPException(status_code=503, detail="FIRMS lookup is not configured")
+    if not monitored_region(lat, lng):
+        raise HTTPException(status_code=422, detail="Choose a location inside an AGNI monitoring region")
+
+    west = max(-180, lng - FIRMS_LOOKUP_RADIUS_DEGREES)
+    south = max(-90, lat - FIRMS_LOOKUP_RADIUS_DEGREES)
+    east = min(180, lng + FIRMS_LOOKUP_RADIUS_DEGREES)
+    north = min(90, lat + FIRMS_LOOKUP_RADIUS_DEGREES)
+    url = (
+        "https://firms.modaps.eosdis.nasa.gov/api/area/csv/"
+        f"{FIRMS_MAP_KEY}/VIIRS_NOAA20_NRT/{west},{south},{east},{north}/1"
+    )
+    try:
+        detections = pd.read_csv(url)
+    except Exception as error:
+        raise HTTPException(status_code=502, detail="Could not retrieve live FIRMS data") from error
+    if detections.empty:
+        raise HTTPException(status_code=404, detail="No FIRMS hotspot found within about 13 km in the latest day")
+
+    distance = (detections["latitude"] - lat) ** 2 + (
+        (detections["longitude"] - lng) * np.cos(np.radians(lat))
+    ) ** 2
+    point = detections.loc[distance.idxmin()]
+    acq_time = str(point.get("acq_time", "0")).split(".")[0].zfill(4)
+    return {
+        "lat": float(point["latitude"]), "lng": float(point["longitude"]),
+        "frp": float(point["frp"]), "bright_ti4": float(point["bright_ti4"]),
+        "bright_ti5": float(point["bright_ti5"]), "acq_date": str(point["acq_date"]),
+        "acq_time": f"{acq_time[:2]}:{acq_time[2:]}",
+        "daynight": str(point.get("daynight", "D")).upper(),
+        "distance_km": round(float(np.sqrt(distance.loc[point.name]) * 111), 1),
+        "source": "NASA FIRMS · VIIRS NOAA-20 · latest 24 hours",
+    }
+
+
 @app.get("/api/detections")
 def detections(region: str | None = None, limit: Annotated[int, Query(ge=1, le=10000)] = 3000) -> list[dict]:
     """Use PostGIS when configured, otherwise retain a responsive real-CSV map."""
@@ -478,6 +537,50 @@ def poll_firms(x_agni_poll_token: Annotated[str | None, Header()] = None) -> dic
         return poller.run_realtime_ingestion(database_url=DB_URL, map_key=FIRMS_MAP_KEY)
     except Exception as error:
         raise HTTPException(status_code=502, detail=f"FIRMS polling failed: {error}") from error
+
+
+_geocode_cache: dict[tuple[float, float], dict] = {}
+
+
+@app.get("/api/geocode/reverse")
+def reverse_geocode(
+    lat: Annotated[float, Query(ge=-90, le=90)],
+    lon: Annotated[float, Query(ge=-180, le=180)],
+) -> dict:
+    """Reverse-geocode latitude/longitude using OpenStreetMap Nominatim."""
+    rounded_lat = round(lat, 4)
+    rounded_lon = round(lon, 4)
+    key = (rounded_lat, rounded_lon)
+    if key in _geocode_cache:
+        return _geocode_cache[key]
+
+    url = "https://nominatim.openstreetmap.org/reverse"
+    params = {
+        "format": "jsonv2",
+        "lat": rounded_lat,
+        "lon": rounded_lon,
+        "zoom": 14,
+        "addressdetails": 1,
+    }
+    headers = {
+        "User-Agent": "AGNI-Pyrolens/1.0 (NASA-FIRMS Dashboard; contact: support@pyrolens.local)",
+        "Accept": "application/json",
+    }
+    try:
+        with httpx.Client(timeout=4.0) as client:
+            resp = client.get(url, params=params, headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                place = data.get("display_name") or data.get("name")
+                result = {"place": place, "lat": rounded_lat, "lon": rounded_lon}
+                if place:
+                    if len(_geocode_cache) > 2000:
+                        _geocode_cache.clear()
+                    _geocode_cache[key] = result
+                return result
+            return {"place": None, "lat": rounded_lat, "lon": rounded_lon, "error": f"OSM status {resp.status_code}"}
+    except Exception as exc:
+        return {"place": None, "lat": rounded_lat, "lon": rounded_lon, "error": str(exc)}
 
 
 DIST_DIR = ROOT / "dist"

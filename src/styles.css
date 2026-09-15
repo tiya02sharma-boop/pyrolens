@@ -411,6 +411,20 @@ body {
   line-height: 1.4;
 }
 
+.firms-status {
+  border-left: 2px solid var(--text-dim);
+  color: var(--text-dim);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  line-height: 1.5;
+  padding: 5px 8px;
+}
+
+.firms-status--loaded {
+  border-left-color: var(--red);
+  color: #ff918c;
+}
+
 .ghost-btn--active {
   border-color: var(--green);
   background: rgba(57, 255, 136, 0.1);
@@ -593,7 +607,21 @@ body {
 .detail-region {
   font-size: 10.5px;
   color: var(--text-dim);
+  margin-bottom: 10px;
+}
+
+.detail-location {
+  font-size: 10.5px;
+  color: var(--green);
+  background: rgba(57, 255, 136, 0.05);
+  border: 1px solid rgba(57, 255, 136, 0.22);
+  border-radius: 4px;
+  padding: 8px 10px;
   margin-bottom: 14px;
+  line-height: 1.45;
+  word-break: break-word;
+  font-family: var(--mono);
+  letter-spacing: 0.02em;
 }
 
 .stat-grid--detail {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { CATEGORIES, REGIONS } from '../data/mockData.js';
 
 function haversineKm(lat1, lng1, lat2, lng2) {
@@ -15,6 +15,7 @@ export default function ClassifyPanel({ coords, onCoordsChange, pickMode, onTogg
   const [acqDate, setAcqDate] = useState('');
   const [acqTime, setAcqTime] = useState('');
   const [daynight, setDaynight] = useState('D');
+  const [firmsStatus, setFirmsStatus] = useState('');
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [added, setAdded] = useState(false);
@@ -28,6 +29,38 @@ export default function ClassifyPanel({ coords, onCoordsChange, pickMode, onTogg
       .sort((a, b) => a.distance - b.distance)[0];
     return { lat, lng, nearest };
   })();
+
+  useEffect(() => {
+    if (!selectedLocation) {
+      setFirmsStatus('');
+      return undefined;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setFirmsStatus('LOOKING UP LATEST FIRMS THERMAL DATA…');
+      try {
+        const response = await fetch(
+          `/api/firms/nearest?lat=${selectedLocation.lat}&lng=${selectedLocation.lng}`,
+          { signal: controller.signal }
+        );
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'FIRMS lookup failed.');
+        setFrp(String(data.frp));
+        setBrightTi4(String(data.bright_ti4));
+        setBrightTi5(String(data.bright_ti5));
+        setAcqDate(data.acq_date);
+        setAcqTime(data.acq_time);
+        setDaynight(data.daynight === 'N' ? 'N' : 'D');
+        setFirmsStatus(`LIVE FIRMS DATA LOADED · ${data.distance_km} KM FROM SELECTED LOCATION`);
+      } catch (lookupError) {
+        if (lookupError.name !== 'AbortError') setFirmsStatus(lookupError.message);
+      }
+    }, 450);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [selectedLocation?.lat, selectedLocation?.lng]);
 
   async function handleClassify(e) {
     e.preventDefault();
@@ -127,6 +160,12 @@ export default function ClassifyPanel({ coords, onCoordsChange, pickMode, onTogg
             <span className="location-confirmation__eyebrow">LOCATION CONFIRMED</span>
             <strong>{selectedLocation.lat.toFixed(3)}°, {selectedLocation.lng.toFixed(3)}°</strong>
             <span>Nearest AGNI monitoring region: {selectedLocation.nearest.name} · {Math.round(selectedLocation.nearest.distance)} km</span>
+          </div>
+        )}
+
+        {firmsStatus && (
+          <div className={`firms-status${firmsStatus.startsWith('LIVE') ? ' firms-status--loaded' : ''}`} role="status">
+            {firmsStatus}
           </div>
         )}
 

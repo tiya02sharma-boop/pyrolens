@@ -1,22 +1,100 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { CATEGORIES } from '../data/mockData.js';
 
+const geocodeCache = new Map();
+
 export default function DetailPanel({ detection }) {
+  const [place, setPlace] = useState(null);
+
+  useEffect(() => {
+    if (!detection || detection.lat == null || detection.lng == null) {
+      setPlace(null);
+      return;
+    }
+
+    const latNum = Number(detection.lat);
+    const lngNum = Number(detection.lng);
+    if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) {
+      setPlace(null);
+      return;
+    }
+
+    const cacheKey = `${latNum.toFixed(4)},${lngNum.toFixed(4)}`;
+    if (geocodeCache.has(cacheKey)) {
+      setPlace(geocodeCache.get(cacheKey));
+      return;
+    }
+
+    let isMounted = true;
+    const controller = new AbortController();
+
+    async function fetchAddress() {
+      let resolved = null;
+
+      // 1. Try backend reverse geocoding proxy first
+      try {
+        const resp = await fetch(`/api/geocode/reverse?lat=${latNum}&lon=${lngNum}`, {
+          signal: controller.signal,
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data && data.place) {
+            resolved = data.place;
+          }
+        }
+      } catch (err) {
+        if (err.name === 'AbortError') return;
+      }
+
+      // 2. Direct OpenStreetMap Nominatim query fallback
+      if (!resolved) {
+        try {
+          const osmUrl = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latNum}&lon=${lngNum}`;
+          const osmResp = await fetch(osmUrl, { signal: controller.signal });
+          if (osmResp.ok) {
+            const osmData = await osmResp.json();
+            resolved = osmData.display_name || osmData.name || null;
+          }
+        } catch (err) {
+          if (err.name === 'AbortError') return;
+        }
+      }
+
+      if (isMounted) {
+        if (resolved) {
+          geocodeCache.set(cacheKey, resolved);
+          setPlace(resolved);
+        } else {
+          setPlace(null);
+        }
+      }
+    }
+
+    fetchAddress();
+
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
+  }, [detection?.id, detection?.lat, detection?.lng]);
+
   if (!detection) {
     return (
       <section className="panel detail-panel detail-panel--empty">
-        <div className="panel__title">DETECTION DETAIL</div>
+        <div className="panel__title">DETECTION DETAILS</div>
         <p className="detail-empty__hint">Click a point on the globe to inspect it.</p>
       </section>
     );
   }
 
   const cat = CATEGORIES[detection.category];
+  const latFormatted = Number(detection.lat).toFixed(4);
+  const lngFormatted = Number(detection.lng).toFixed(4);
 
   return (
     <section className="panel detail-panel">
       <div className="panel__title">
-        DETECTION DETAIL
+        DETECTION DETAILS
         {detection.anomaly && <span className="anomaly-badge">ANOMALY</span>}
       </div>
 
@@ -24,6 +102,10 @@ export default function DetailPanel({ detection }) {
         {detection.id}
       </div>
       <div className="detail-region">{detection.region}</div>
+
+      <div className="detail-location">
+        {place ? `Location: ${place} | ` : ''}Lat: {latFormatted}, Long: {lngFormatted}
+      </div>
 
       <div className="stat-grid stat-grid--detail">
         <div className="stat-cell">
