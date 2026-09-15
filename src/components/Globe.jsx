@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import GlobeGL from 'react-globe.gl';
 import { CATEGORIES } from '../data/mockData.js';
 
+const THERMAL_HOTSPOT = '#ff2b24';
+
 export default function Globe({ detections, selectedId, pickedCoords, onSelect, flyTo, onGlobeClick }) {
   const globeRef = useRef();
   const [size, setSize] = useState({
@@ -51,22 +53,24 @@ export default function Globe({ detections, selectedId, pickedCoords, onSelect, 
   return (
     <GlobeGL
       ref={globeRef}
-      globeImageUrl="https://unpkg.com/three-globe/example/img/earth-night.jpg"
+      globeImageUrl="https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
       bumpImageUrl="https://unpkg.com/three-globe/example/img/earth-topology.png"
       backgroundColor="rgba(0,0,0,0)"
-      atmosphereColor="#39ff88"
-      atmosphereAltitude={0.18}
+      atmosphereColor="#77caff"
+      atmosphereAltitude={0.12}
       width={size.width}
       height={size.height}
       pointsData={detections}
       pointLat="lat"
       pointLng="lng"
-      pointColor={(d) => (d.id === selectedId ? '#ffffff' : CATEGORIES[d.category].color)}
-      pointAltitude={(d) => 0.006 + d.confidence * 0.02}
-      pointRadius={(d) => (d.id === selectedId ? 0.16 : 0.035 + d.confidence * 0.025)}
+      // FIRMS-style thermal layer: every satellite hotspot is red. The AGNI
+      // classification remains visible in its hover label and detail panel.
+      pointColor={(d) => (d.id === selectedId ? '#ffffff' : THERMAL_HOTSPOT)}
+      pointAltitude={(d) => 0.004 + d.confidence * 0.008}
+      pointRadius={(d) => (d.id === selectedId ? 0.13 : 0.024 + d.confidence * 0.016)}
       pointResolution={8}
       pointsMerge={false}
-      pointLabel={(d) => `<b>${d.id}</b><br/>${CATEGORIES[d.category].label}<br/>${d.frp} MW FRP · ${Math.round(d.confidence * 100)}%`}
+      pointLabel={(d) => `<b>THERMAL HOTSPOT · ${d.id}</b><br/>AGNI classification: ${CATEGORIES[d.category].label}<br/>${d.frp} MW FRP · ${Math.round(d.confidence * 100)}%`}
       onPointClick={(d) => onSelect(d.id)}
       onGlobeClick={onGlobeClick}
       labelsData={pickedPoint}
