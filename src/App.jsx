@@ -177,14 +177,14 @@ export default function App() {
   }
 
   function handlePointClick(detection) {
-    if (pickMode) {
-      setPickedCoords({
-        lat: Number(detection.lat).toFixed(4),
-        lng: Number(detection.lng).toFixed(4),
-        detection,
-      });
-      setPickMode(false);
-    }
+    // Always load the full detection data into the classifier when clicking
+    // any hotspot on the globe, regardless of pickMode state.
+    setPickedCoords({
+      lat: Number(detection.lat).toFixed(4),
+      lng: Number(detection.lng).toFixed(4),
+      detection,
+    });
+    if (pickMode) setPickMode(false);
   }
 
   function handleUseHotspotInClassifier(detection) {

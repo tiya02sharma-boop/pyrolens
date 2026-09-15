@@ -33,10 +33,16 @@ export default function ClassifyPanel({ coords, onCoordsChange, pickMode, onTogg
   useEffect(() => {
     if (coords?.detection) {
       const d = coords.detection;
+      // FRP is always present
       if (d.frp != null) setFrp(String(d.frp));
-      if (d.bright_ti4 != null) setBrightTi4(String(d.bright_ti4));
-      if (d.bright_ti5 != null) setBrightTi5(String(d.bright_ti5));
+      // bright_ti4 / bright_ti5 may be null for older records — only fill if valid
+      if (d.bright_ti4 != null && d.bright_ti4 !== 'null') setBrightTi4(String(d.bright_ti4));
+      else setBrightTi4('');
+      if (d.bright_ti5 != null && d.bright_ti5 !== 'null') setBrightTi5(String(d.bright_ti5));
+      else setBrightTi5('');
+      // firstDetected is always YYYY-MM-DD which is what <input type="date"> expects
       if (d.firstDetected) setAcqDate(d.firstDetected);
+      // acqTime is always HH:MM which is what <input type="time"> expects
       if (d.acqTime) setAcqTime(d.acqTime);
       if (d.daynight) setDaynight(d.daynight === 'N' ? 'N' : 'D');
       setFirmsStatus(`HOTSPOT ${d.id} SELECTED · FIRMS PARAMETERS LOADED`);

@@ -458,7 +458,7 @@ def detections(region: str | None = None, limit: Annotated[int, Query(ge=1, le=1
     where_clause = "WHERE region = :region" if region and region != "all" else ""
     sql = text(f"""
         SELECT id, point_id, region, category, confidence, frp, latitude, longitude,
-               acq_date, persistence_30d, is_anomalous
+               acq_date, acq_time, bright_ti4, bright_ti5, daynight, persistence_30d, is_anomalous
         FROM detections
         {where_clause}
         ORDER BY random()
@@ -474,8 +474,12 @@ def detections(region: str | None = None, limit: Annotated[int, Query(ge=1, le=1
     if not rows and region and region != "all":
         raise HTTPException(status_code=404, detail="Unknown region")
 
-    return [
-        {
+    result = []
+    for r in rows:
+        # Format acq_time (stored as integer HHMM e.g. 838) into HH:MM for the time input
+        raw_time = str(r["acq_time"]).split(".")[0].zfill(4) if r["acq_time"] is not None else "1200"
+        acq_time_fmt = f"{raw_time[:2]}:{raw_time[2:]}" if len(raw_time) >= 4 else "12:00"
+        result.append({
             # Historical imports retain their source point_id. Real-time FIRMS
             # rows have no source point_id, so use Postgres's serial primary key.
             "id": f"FIRMS-{int(r['point_id'] if r['point_id'] is not None else r['id']):05d}",
@@ -483,13 +487,17 @@ def detections(region: str | None = None, limit: Annotated[int, Query(ge=1, le=1
             "regionId": REGION_IDS.get(r["region"], r["region"]),
             "lat": r["latitude"], "lng": r["longitude"],
             "category": ui_category(r["category"]), "confidence": round(r["confidence"], 3),
-            "frp": round(r["frp"], 2), "firstDetected": str(r["acq_date"]),
+            "frp": round(r["frp"], 2),
+            "bright_ti4": round(float(r["bright_ti4"]), 1) if r["bright_ti4"] is not None else None,
+            "bright_ti5": round(float(r["bright_ti5"]), 1) if r["bright_ti5"] is not None else None,
+            "acqTime": acq_time_fmt,
+            "daynight": str(r["daynight"]).upper() if r["daynight"] is not None else "D",
+            "firstDetected": str(r["acq_date"]),
             "persistent": (r["persistence_30d"] or 0) >= 4,
             "activeMonths": round((r["persistence_30d"] or 0) / 30, 1),
             "anomaly": bool(r["is_anomalous"]),
-        }
-        for r in rows
-    ]
+        })
+    return result
 
 
 @app.get("/api/detections/nearby")
