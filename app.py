@@ -367,7 +367,7 @@ def detections(region: str | None = None, limit: Annotated[int, Query(ge=1, le=1
 
     where_clause = "WHERE region = :region" if region and region != "all" else ""
     sql = text(f"""
-        SELECT point_id, region, category, confidence, frp, latitude, longitude,
+        SELECT id, point_id, region, category, confidence, frp, latitude, longitude,
                acq_date, persistence_30d, is_anomalous
         FROM detections
         {where_clause}
@@ -386,7 +386,9 @@ def detections(region: str | None = None, limit: Annotated[int, Query(ge=1, le=1
 
     return [
         {
-            "id": f"FIRMS-{r['point_id']:05d}",
+            # Historical imports retain their source point_id. Real-time FIRMS
+            # rows have no source point_id, so use Postgres's serial primary key.
+            "id": f"FIRMS-{int(r['point_id'] if r['point_id'] is not None else r['id']):05d}",
             "region": REGION_LABELS.get(r["region"], r["region"].replace("_", " ").title()),
             "regionId": REGION_IDS.get(r["region"], r["region"]),
             "lat": r["latitude"], "lng": r["longitude"],
