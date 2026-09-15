@@ -132,16 +132,6 @@ export default function DetailPanel({ detection, onUseInClassifier }) {
 
       <div className="stat-grid stat-grid--detail">
         <div className="stat-cell">
-          <div className="stat-cell__label">CATEGORY</div>
-          <div className="stat-cell__value" style={{ color: cat.color }}>
-            {cat.label}
-          </div>
-        </div>
-        <div className="stat-cell">
-          <div className="stat-cell__label">CONFIDENCE</div>
-          <div className="stat-cell__value">{Math.round(detection.confidence * 100)}%</div>
-        </div>
-        <div className="stat-cell">
           <div className="stat-cell__label">FRP</div>
           <div className="stat-cell__value">{detection.frp} MW</div>
         </div>
