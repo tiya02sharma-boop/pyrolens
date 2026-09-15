@@ -1,0 +1,12 @@
+.env*
+node_modules/
+__pycache__/
+*.pyc
+.vite/
+dist/
+.DS_Store
+*.egg-info/
+.venv/
+venv/
+models/model_random_forest_v2.joblib
+models/model_random_forest_v2.joblib

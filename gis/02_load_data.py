@@ -1,0 +1,62 @@
+"""
+Loads outputs/firms_combined_with_predictions_v2.csv into the PostGIS
+`detections` table. Run once (or re-run to refresh after retraining).
+
+    python3 gis/02_load_data.py
+"""
+import os
+import pandas as pd
+from sqlalchemy import create_engine, text
+
+DB_URL = os.getenv("DATABASE_URL")
+CSV_PATH = "outputs/firms_combined_with_predictions_v2.csv"
+UI_CATEGORY = {"offshore_flare_or_platform": "flare"}
+
+
+def main():
+    if not DB_URL:
+        raise SystemExit("Set DATABASE_URL before loading PostGIS, e.g. postgresql+psycopg2://user:password@localhost:5432/agni_gis")
+    print("Reading CSV...")
+    df = pd.read_csv(CSV_PATH, low_memory=False)
+    print(f"  {len(df)} rows")
+
+    df["category"] = df["category"].map(lambda c: UI_CATEGORY.get(c, c))
+    df = df[~df["category"].isin(["unlabeled"])].copy()
+    print(f"  {len(df)} rows after dropping unlabeled")
+
+    engine = create_engine(DB_URL)
+
+    with engine.begin() as conn:
+        conn.execute(text("TRUNCATE TABLE detections RESTART IDENTITY;"))
+
+        rows = df[[
+            "point_id", "region", "acq_date", "latitude", "longitude", "frp",
+            "bright_ti4", "bright_ti5", "daynight", "category",
+            "persistence_count_30d", "is_anomalous", "anomaly_score",
+        ]].copy()
+        rows["confidence"] = 0.9  # placeholder; real per-row confidence comes from model.predict_proba at query time if needed
+        rows = rows.rename(columns={"persistence_count_30d": "persistence_30d"})
+
+        print("Inserting rows with geometry...")
+        insert_sql = text("""
+            INSERT INTO detections
+                (point_id, region, acq_date, latitude, longitude, frp,
+                 bright_ti4, bright_ti5, daynight, category, confidence,
+                 persistence_30d, is_anomalous, anomaly_score, geom)
+            VALUES
+                (:point_id, :region, :acq_date, :latitude, :longitude, :frp,
+                 :bright_ti4, :bright_ti5, :daynight, :category, :confidence,
+                 :persistence_30d, :is_anomalous, :anomaly_score,
+                 ST_SetSRID(ST_MakePoint(:longitude, :latitude), 4326))
+        """)
+        records = rows.to_dict(orient="records")
+        batch_size = 5000
+        for i in range(0, len(records), batch_size):
+            conn.execute(insert_sql, records[i:i + batch_size])
+            print(f"  inserted {min(i + batch_size, len(records))}/{len(records)}")
+
+    print("Done.")
+
+
+if __name__ == "__main__":
+    main()
