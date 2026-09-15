@@ -10,7 +10,11 @@ function haversineKm(lat1, lng1, lat2, lng2) {
 
 export default function ClassifyPanel({ coords, onCoordsChange, pickMode, onTogglePick, onAdd }) {
   const [frp, setFrp] = useState('');
-  const [brightness, setBrightness] = useState('');
+  const [brightTi4, setBrightTi4] = useState('');
+  const [brightTi5, setBrightTi5] = useState('');
+  const [acqDate, setAcqDate] = useState('');
+  const [acqTime, setAcqTime] = useState('');
+  const [daynight, setDaynight] = useState('D');
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [added, setAdded] = useState(false);
@@ -30,7 +34,8 @@ export default function ClassifyPanel({ coords, onCoordsChange, pickMode, onTogg
     const lat = parseFloat(coords.lat);
     const lng = parseFloat(coords.lng);
     const frpNum = parseFloat(frp);
-    const brightNum = brightness === '' ? null : parseFloat(brightness);
+    const brightTi4Num = parseFloat(brightTi4);
+    const brightTi5Num = parseFloat(brightTi5);
 
     if (Number.isNaN(lat) || lat < -90 || lat > 90 || Number.isNaN(lng) || lng < -180 || lng > 180) {
       setError('Enter a valid latitude (-90 to 90) and longitude (-180 to 180).');
@@ -40,6 +45,14 @@ export default function ClassifyPanel({ coords, onCoordsChange, pickMode, onTogg
       setError('Enter FRP in megawatts (a positive number).');
       return;
     }
+    if (Number.isNaN(brightTi4Num) || brightTi4Num <= 0 || Number.isNaN(brightTi5Num) || brightTi5Num <= 0) {
+      setError('Enter valid VIIRS I4 and I5 brightness temperatures in kelvin.');
+      return;
+    }
+    if (!acqDate || !acqTime) {
+      setError('Enter the satellite acquisition date and UTC time.');
+      return;
+    }
 
     setError(null);
     setLoading(true);
@@ -47,11 +60,14 @@ export default function ClassifyPanel({ coords, onCoordsChange, pickMode, onTogg
       const response = await fetch('/api/classify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lat, lng, frp: frpNum, brightness: brightNum }),
+        body: JSON.stringify({
+          lat, lng, frp: frpNum, bright_ti4: brightTi4Num, bright_ti5: brightTi5Num,
+          acq_date: acqDate, acq_time: acqTime, daynight,
+        }),
       });
       if (!response.ok) throw new Error('The AGNI classifier could not process this detection.');
       const res = await response.json();
-      setResult({ ...res, lat, lng, frp: frpNum, brightness: brightNum });
+      setResult({ ...res, lat, lng, frp: frpNum });
       setAdded(false);
     } catch (apiError) {
       setError(apiError.message);
@@ -126,14 +142,39 @@ export default function ClassifyPanel({ coords, onCoordsChange, pickMode, onTogg
             />
           </label>
           <label className="field">
-            <span className="field__label">BRIGHTNESS (K, optional)</span>
+            <span className="field__label">VIIRS I4 (K)</span>
             <input
               type="text"
               inputMode="decimal"
-              placeholder="e.g. 1450"
-              value={brightness}
-              onChange={(e) => setBrightness(e.target.value)}
+              placeholder="e.g. 340"
+              value={brightTi4}
+              onChange={(e) => setBrightTi4(e.target.value)}
             />
+          </label>
+        </div>
+
+        <div className="field-row">
+          <label className="field">
+            <span className="field__label">VIIRS I5 (K)</span>
+            <input type="text" inputMode="decimal" placeholder="e.g. 300" value={brightTi5} onChange={(e) => setBrightTi5(e.target.value)} />
+          </label>
+          <label className="field">
+            <span className="field__label">ACQUISITION DATE</span>
+            <input type="date" value={acqDate} onChange={(e) => setAcqDate(e.target.value)} />
+          </label>
+        </div>
+
+        <div className="field-row">
+          <label className="field">
+            <span className="field__label">UTC TIME</span>
+            <input type="time" value={acqTime} onChange={(e) => setAcqTime(e.target.value)} />
+          </label>
+          <label className="field">
+            <span className="field__label">DAY / NIGHT</span>
+            <select value={daynight} onChange={(e) => setDaynight(e.target.value)}>
+              <option value="D">DAY</option>
+              <option value="N">NIGHT</option>
+            </select>
           </label>
         </div>
 

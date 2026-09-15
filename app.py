@@ -14,9 +14,10 @@ from __future__ import annotations
 import os
 import hmac
 from importlib import import_module
+from datetime import date, time
 from functools import lru_cache
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 import joblib
 import numpy as np
@@ -110,7 +111,11 @@ class ClassificationRequest(BaseModel):
     lat: float = Field(ge=-90, le=90)
     lng: float = Field(ge=-180, le=180)
     frp: float = Field(gt=0, description="Fire radiative power in MW")
-    brightness: float | None = Field(default=None, gt=0, description="Brightness temperature in K")
+    bright_ti4: float = Field(gt=0, description="VIIRS I4 brightness temperature in K")
+    bright_ti5: float = Field(gt=0, description="VIIRS I5 brightness temperature in K")
+    acq_date: date = Field(description="Satellite acquisition date")
+    acq_time: time = Field(description="Satellite acquisition time in UTC")
+    daynight: Literal["D", "N"] = Field(description="D for daytime or N for nighttime")
 
 
 @lru_cache
@@ -246,7 +251,7 @@ def explain_prediction(
             "value": format_feature_value(name, row),
             "contribution": round(amount, 4),
             "direction": "supports" if amount >= 0 else "opposes",
-            "source": "submitted" if name == "frp" or (request.brightness is not None and name in {"bright_ti4", "bright_ti5", "frp_to_temp_ratio"}) else "nearby historic observation",
+            "source": "submitted" if name in {"frp", "bright_ti4", "bright_ti5", "brightness_temp_diff", "frp_to_temp_ratio", "month", "day_of_year", "hour", "daynight_enc"} else "nearby historic observation",
         })
     class_phrase = CLASS_LABELS.get(raw_class, raw_class.replace("_", " "))
     ui_phrase = CLASS_LABELS.get(category, category)
@@ -275,8 +280,6 @@ def explain_prediction(
         f"Sentinel-2 / OSM context was borrowed from the nearest historic FIRMS observation "
         f"({reference_distance_km:.0f} km away), because those fields are not entered in this panel.",
     ]
-    if request.brightness is None:
-        context.append("No brightness temperature was submitted, so I4/I5 thermal bands also came from that nearby observation.")
     signals = [summary, *context[:3]]
     return {
         "summary": summary,
@@ -289,14 +292,19 @@ def explain_prediction(
 
 
 def predict(request: ClassificationRequest) -> dict:
-    df, model, label_encoder, features, _ = assets()
+    df, model, label_encoder, features, encoders = assets()
     row = nearest_reference(df, request.lat, request.lng)
     row["frp"] = request.frp
-    if request.brightness is not None:
-        row["bright_ti4"] = request.brightness
-        row["bright_ti5"] = request.brightness - float(row["brightness_temp_diff"])
+    row["bright_ti4"] = request.bright_ti4
+    row["bright_ti5"] = request.bright_ti5
+    row["brightness_temp_diff"] = request.bright_ti4 - request.bright_ti5
     row["frp_to_temp_ratio"] = request.frp / max(float(row["bright_ti4"]), 1)
     row["footprint_proxy"] = float(row["scan"]) * float(row["track"])
+    row["month"] = request.acq_date.month
+    row["day_of_year"] = request.acq_date.timetuple().tm_yday
+    row["hour"] = request.acq_time.hour
+    row["daynight"] = request.daynight
+    row["daynight_enc"] = encoders["daynight"].transform([request.daynight])[0]
     probabilities = model.predict_proba(pd.DataFrame([row[features]]))[0]
     raw_scores = dict(zip(label_encoder.classes_, probabilities, strict=True))
     scores = {key: 0.0 for key in ("industrial", "flare", "agricultural", "wildfire", "mining")}
@@ -322,8 +330,7 @@ def predict(request: ClassificationRequest) -> dict:
             "drivers": [],
             "context": [
                 f"Satellite, land-cover, and persistence context came from the nearest historic observation ({reference_distance:.0f} km away).",
-                f"Submitted thermal signal: {request.frp:.1f} MW FRP"
-                + (f", {request.brightness:.0f} K brightness." if request.brightness else "."),
+                f"Submitted thermal signal: {request.frp:.1f} MW FRP, {request.bright_ti4:.0f} K I4, and {request.bright_ti5:.0f} K I5.",
             ],
             "referenceKm": round(reference_distance, 1),
         }

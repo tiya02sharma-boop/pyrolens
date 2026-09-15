@@ -389,7 +389,8 @@ body {
   letter-spacing: 0.08em;
 }
 
-.field input {
+.field input,
+.field select {
   background: rgba(0, 0, 0, 0.35);
   border: 1px solid var(--panel-border);
   color: var(--text);
@@ -399,7 +400,8 @@ body {
   width: 100%;
 }
 
-.field input:focus-visible {
+.field input:focus-visible,
+.field select:focus-visible {
   outline: 1px solid var(--green);
 }
 
