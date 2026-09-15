@@ -27,14 +27,20 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/detections?limit=3000')
-      .then((response) => {
-        if (!response.ok) throw new Error('Could not load AGNI detections.');
-        return response.json();
-      })
-      .then((items) => { if (!cancelled) setDetections(items); })
-      .catch((error) => { if (!cancelled) setDataError(error.message); });
-    return () => { cancelled = true; };
+    const loadDetections = () => {
+      fetch('/api/detections?limit=3000')
+        .then((response) => {
+          if (!response.ok) throw new Error('Could not load AGNI detections.');
+          return response.json();
+        })
+        .then((items) => { if (!cancelled) setDetections(items); })
+        .catch((error) => { if (!cancelled) setDataError(error.message); });
+    };
+    loadDetections();
+    // Keep the dashboard current as the scheduled real-time poller inserts
+    // newly classified FIRMS detections.
+    const intervalId = setInterval(loadDetections, 5 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(intervalId); };
   }, []);
 
   const regionFiltered = useMemo(() => {
