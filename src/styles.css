@@ -617,6 +617,17 @@ body {
   animation: blink 1.4s ease-in-out infinite;
 }
 
+.firms-badge {
+  font-size: 9px;
+  color: #ff8a3d;
+  border: 1px solid #ff8a3d;
+  background: rgba(255, 138, 61, 0.12);
+  padding: 2px 6px;
+  letter-spacing: 0.08em;
+  border-radius: 2px;
+  margin-left: 6px;
+}
+
 .detail-id {
   font-size: 16px;
   font-weight: 700;
@@ -626,7 +637,33 @@ body {
 .detail-region {
   font-size: 10.5px;
   color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
+.detail-source {
+  font-size: 9.5px;
+  color: #ff8a3d;
+  letter-spacing: 0.05em;
   margin-bottom: 10px;
+}
+
+.firms-hotspot-detail {
+  border-top: 1px solid var(--panel-border);
+  margin-top: 14px;
+  padding-top: 12px;
+}
+
+.stat-grid--firms {
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+
+.firms-hotspot-note {
+  font-size: 10px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  margin: 6px 0 0;
+  font-style: italic;
 }
 
 .detail-location {

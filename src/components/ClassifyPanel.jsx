@@ -8,7 +8,7 @@ function haversineKm(lat1, lng1, lat2, lng2) {
   return 6371 * 2 * Math.asin(Math.sqrt(a));
 }
 
-export default function ClassifyPanel({ coords, onCoordsChange, pickMode, onTogglePick, onAdd }) {
+export default function ClassifyPanel({ coords, onCoordsChange, pickMode, onTogglePick, onAdd, onClassified }) {
   const [frp, setFrp] = useState('');
   const [brightTi4, setBrightTi4] = useState('');
   const [brightTi5, setBrightTi5] = useState('');
@@ -100,8 +100,25 @@ export default function ClassifyPanel({ coords, onCoordsChange, pickMode, onTogg
       });
       if (!response.ok) throw new Error('The AGNI classifier could not process this detection.');
       const res = await response.json();
-      setResult({ ...res, lat, lng, frp: frpNum });
+      const fullResult = {
+        ...res,
+        lat,
+        lng,
+        frp: frpNum,
+        bright_ti4: brightTi4Num,
+        bright_ti5: brightTi5Num,
+        acq_date: acqDate,
+        acq_time: acqTime,
+        daynight,
+        source: 'NASA FIRMS NRT · VIIRS NOAA-20',
+        isFirmsHotspot: true,
+        isNewDetection: true,
+      };
+      setResult(fullResult);
       setAdded(false);
+      if (onClassified) {
+        onClassified(fullResult);
+      }
     } catch (apiError) {
       setError(apiError.message);
     } finally {

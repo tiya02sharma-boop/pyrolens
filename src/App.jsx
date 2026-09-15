@@ -64,9 +64,11 @@ export default function App() {
     return c;
   }, [regionFiltered]);
 
+  const [classifiedPreview, setClassifiedPreview] = useState(null);
+
   const selectedDetection = useMemo(
-    () => visibleDetections.find((d) => d.id === selectedId) || null,
-    [visibleDetections, selectedId]
+    () => visibleDetections.find((d) => d.id === selectedId) || (selectedId === classifiedPreview?.id ? classifiedPreview : null),
+    [visibleDetections, selectedId, classifiedPreview]
   );
 
   const regionFlyTo = useMemo(() => {
@@ -114,28 +116,59 @@ export default function App() {
     setPickMode(false);
   }
 
-  function handleAddDetection(result) {
-    const id = `USER-${String(userDetectionSeq).padStart(4, '0')}`;
-    userDetectionSeq += 1;
+  function buildFirmsDetection(result, id) {
+    const nearest = REGIONS
+      .map((r) => {
+        const d = Math.sqrt((r.lat - result.lat) ** 2 + ((r.lng - result.lng) * Math.cos(r.lat * Math.PI / 180)) ** 2) * 111;
+        return { ...r, distance: d };
+      })
+      .sort((a, b) => a.distance - b.distance)[0];
 
-    const newDetection = {
+    const regionName = nearest && nearest.distance < 400
+      ? `${nearest.label} (~${Math.round(nearest.distance)} km)`
+      : 'Real-time FIRMS Hotspot';
+
+    return {
       id,
-      region: 'User input',
-      regionId: 'user-input',
+      region: regionName,
+      regionId: nearest?.id || 'user-input',
       lat: result.lat,
       lng: result.lng,
       category: result.category,
       confidence: result.confidence,
       frp: result.frp,
-      firstDetected: new Date().toISOString().slice(0, 10),
+      bright_ti4: result.bright_ti4,
+      bright_ti5: result.bright_ti5,
+      acqDate: result.acq_date,
+      acqTime: result.acq_time,
+      daynight: result.daynight,
+      source: result.source || 'NASA FIRMS NRT · VIIRS NOAA-20',
+      isFirmsHotspot: true,
+      isNewDetection: true,
+      firstDetected: result.acq_date || new Date().toISOString().slice(0, 10),
       persistent: false,
       activeMonths: 0,
       anomaly: false,
       explanation: result.explanation || null,
     };
+  }
+
+  function handleClassified(result) {
+    const id = `FIRMS-HOTSPOT-${String(userDetectionSeq).padStart(4, '0')}`;
+    const preview = buildFirmsDetection(result, id);
+    setClassifiedPreview(preview);
+    setSelectedId(id);
+    setManualFocus([result.lat, result.lng]);
+  }
+
+  function handleAddDetection(result) {
+    const id = `FIRMS-HOTSPOT-${String(userDetectionSeq).padStart(4, '0')}`;
+    userDetectionSeq += 1;
+
+    const newDetection = buildFirmsDetection(result, id);
 
     setDetections((prev) => [...prev, newDetection]);
-    // Make sure the new point is actually visible regardless of current filters.
+    setClassifiedPreview(null);
     setActiveCategories((prev) => new Set(prev).add(result.category));
     setMinConfidence((prev) => Math.min(prev, result.confidence));
     setRegionId('all');
@@ -178,6 +211,7 @@ export default function App() {
           pickMode={pickMode}
           onTogglePick={() => setPickMode((p) => !p)}
           onAdd={handleAddDetection}
+          onClassified={handleClassified}
         />
       </div>
 

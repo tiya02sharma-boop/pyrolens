@@ -117,12 +117,14 @@ export default function DetailPanel({ detection }) {
       <div className="panel__title">
         DETECTION DETAILS
         {detection.anomaly && <span className="anomaly-badge">ANOMALY</span>}
+        {detection.isFirmsHotspot && <span className="firms-badge">FIRMS HOTSPOT</span>}
       </div>
 
       <div className="detail-id" style={{ color: cat.color, textShadow: `0 0 10px ${cat.color}88` }}>
         {detection.id}
       </div>
       <div className="detail-region">{detection.region}</div>
+      {detection.source && <div className="detail-source">{detection.source}</div>}
 
       <div className="detail-location">
         {place ? `Location: ${place} | ` : ''}Lat: {latFormatted}, Long: {lngFormatted}
@@ -156,10 +158,45 @@ export default function DetailPanel({ detection }) {
         <div className="stat-cell">
           <div className="stat-cell__label">PERSISTENCE</div>
           <div className="stat-cell__value">
-            {detection.persistent ? `ACTIVE ${detection.activeMonths} MO` : 'ONE-OFF'}
+            {detection.isNewDetection ? 'HOTSPOT ONLY' : (detection.persistent ? `ACTIVE ${detection.activeMonths} MO` : 'ONE-OFF')}
           </div>
         </div>
       </div>
+
+      {(detection.bright_ti4 != null || detection.isFirmsHotspot) && (
+        <div className="firms-hotspot-detail">
+          <div className="model-explain__title">FIRMS HOTSPOT TELEMETRY</div>
+          <div className="stat-grid stat-grid--firms">
+            {detection.bright_ti4 != null && (
+              <div className="stat-cell">
+                <div className="stat-cell__label">VIIRS I4 TEMP</div>
+                <div className="stat-cell__value">{detection.bright_ti4} K</div>
+              </div>
+            )}
+            {detection.bright_ti5 != null && (
+              <div className="stat-cell">
+                <div className="stat-cell__label">VIIRS I5 TEMP</div>
+                <div className="stat-cell__value">{detection.bright_ti5} K</div>
+              </div>
+            )}
+            {detection.acqTime && (
+              <div className="stat-cell">
+                <div className="stat-cell__label">ACQ TIME</div>
+                <div className="stat-cell__value">{detection.acqTime} UTC</div>
+              </div>
+            )}
+            {detection.daynight && (
+              <div className="stat-cell">
+                <div className="stat-cell__label">PASS TYPE</div>
+                <div className="stat-cell__value">{detection.daynight === 'N' ? 'NIGHT PASS' : 'DAY PASS'}</div>
+              </div>
+            )}
+          </div>
+          <p className="firms-hotspot-note">
+            Real-time NASA FIRMS satellite thermal hotspot (VIIRS NOAA-20 NRT). Single-event thermal reading without multi-year persistent clustering.
+          </p>
+        </div>
+      )}
 
       {detection.category === 'industrial' && (
         <div className="facility-context">
