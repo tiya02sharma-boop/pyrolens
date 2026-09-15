@@ -286,82 +286,6 @@ body {
   font-size: 12px;
 }
 
-/* ---------- Filter panel (left) ---------- */
-
-.cat-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 16px;
-}
-
-.cat-row {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  background: transparent;
-  border: none;
-  padding: 7px 4px;
-  font-family: var(--mono);
-  color: var(--text-dim);
-  cursor: pointer;
-  text-align: left;
-  transition: background 0.15s ease;
-}
-
-.cat-row:hover {
-  background: rgba(57, 255, 136, 0.06);
-}
-
-.cat-row:focus-visible {
-  outline: 1px solid var(--green);
-}
-
-.cat-row--active .cat-row__label {
-  color: var(--text);
-}
-
-.cat-row__swatch {
-  width: 9px;
-  height: 9px;
-  border-radius: 2px;
-  flex-shrink: 0;
-}
-
-.cat-row__label {
-  flex: 1;
-  font-size: 11px;
-  letter-spacing: 0.04em;
-}
-
-.cat-row__count {
-  font-size: 10.5px;
-  color: var(--text-dim);
-}
-
-.confidence-block {
-  border-top: 1px solid var(--panel-border);
-  padding-top: 12px;
-}
-
-.confidence-block__label {
-  display: flex;
-  justify-content: space-between;
-  font-size: 10px;
-  color: var(--text-dim);
-  letter-spacing: 0.08em;
-  margin-bottom: 8px;
-}
-
-.confidence-block__value {
-  color: var(--green);
-}
-
-.confidence-block input[type='range'] {
-  width: 100%;
-  accent-color: #39ff88;
-}
-
 /* ---------- Classify panel ---------- */
 
 .classify-form {
@@ -702,40 +626,6 @@ body {
   gap: 8px;
 }
 
-/* ---------- Stats bar (bottom) ---------- */
-
-.stats-bar {
-  position: absolute;
-  z-index: 20;
-  left: 24px;
-  right: 24px;
-  bottom: 22px;
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 14px;
-}
-
-.stats-card {
-  background: var(--panel);
-  border: 1px solid var(--panel-border);
-  backdrop-filter: blur(6px);
-  padding: 12px 14px;
-}
-
-.stats-card__value {
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--green);
-  text-shadow: 0 0 10px var(--green-soft);
-}
-
-.stats-card__label {
-  margin-top: 4px;
-  font-size: 10px;
-  color: var(--text-dim);
-  letter-spacing: 0.08em;
-}
-
 /* ---------- HUD frame chrome ---------- */
 
 .hud-corner {
@@ -805,9 +695,6 @@ body {
     width: 220px;
   }
 
-  .stats-bar {
-    grid-template-columns: repeat(2, 1fr);
-  }
 }
 
 @media (max-width: 760px) {

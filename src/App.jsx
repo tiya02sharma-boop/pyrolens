@@ -2,13 +2,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import Globe from './components/Globe.jsx';
 import HUDFrame from './components/HUDFrame.jsx';
 import TopBar from './components/TopBar.jsx';
-import FilterPanel from './components/FilterPanel.jsx';
 import ClassifyPanel from './components/ClassifyPanel.jsx';
 import DetailPanel from './components/DetailPanel.jsx';
-import StatsBar from './components/StatsBar.jsx';
-import { REGIONS, CATEGORIES } from './data/mockData.js';
-
-const ALL_CATEGORY_KEYS = Object.keys(CATEGORIES);
+import { REGIONS } from './data/mockData.js';
 
 let userDetectionSeq = 1;
 
@@ -17,8 +13,6 @@ export default function App() {
   const [dataError, setDataError] = useState(null);
 
   const [regionId, setRegionId] = useState('all');
-  const [activeCategories, setActiveCategories] = useState(new Set(ALL_CATEGORY_KEYS));
-  const [minConfidence, setMinConfidence] = useState(0.4);
   const [selectedId, setSelectedId] = useState(null);
 
   const [pickedCoords, setPickedCoords] = useState({ lat: '', lng: '' });
@@ -48,27 +42,11 @@ export default function App() {
     return detections.filter((d) => d.regionId === regionId);
   }, [detections, regionId]);
 
-  const visibleDetections = useMemo(
-    () =>
-      regionFiltered.filter(
-        (d) => activeCategories.has(d.category) && d.confidence >= minConfidence
-      ),
-    [regionFiltered, activeCategories, minConfidence]
-  );
-
-  const counts = useMemo(() => {
-    const c = {};
-    regionFiltered.forEach((d) => {
-      c[d.category] = (c[d.category] || 0) + 1;
-    });
-    return c;
-  }, [regionFiltered]);
-
   const [classifiedPreview, setClassifiedPreview] = useState(null);
 
   const selectedDetection = useMemo(
-    () => visibleDetections.find((d) => d.id === selectedId) || (selectedId === classifiedPreview?.id ? classifiedPreview : null),
-    [visibleDetections, selectedId, classifiedPreview]
+    () => regionFiltered.find((d) => d.id === selectedId) || (selectedId === classifiedPreview?.id ? classifiedPreview : null),
+    [regionFiltered, selectedId, classifiedPreview]
   );
 
   const regionFlyTo = useMemo(() => {
@@ -78,31 +56,6 @@ export default function App() {
   }, [regionId]);
 
   const flyTo = manualFocus || regionFlyTo;
-
-  const stats = useMemo(() => {
-    const anomalies = visibleDetections.filter((d) => d.anomaly).length;
-    const persistent = visibleDetections.filter((d) => d.persistent).length;
-    const avgConf =
-      visibleDetections.length === 0
-        ? 0
-        : visibleDetections.reduce((sum, d) => sum + d.confidence, 0) / visibleDetections.length;
-
-    return [
-      { label: 'TOTAL DETECTIONS', value: visibleDetections.length.toLocaleString() },
-      { label: 'ACTIVE ANOMALIES', value: anomalies, color: anomalies > 0 ? '#ff3b3b' : undefined },
-      { label: 'PERSISTENT SOURCES', value: persistent, color: '#b083ff' },
-      { label: 'AVG CONFIDENCE', value: `${Math.round(avgConf * 100)}%` },
-    ];
-  }, [visibleDetections]);
-
-  function toggleCategory(key) {
-    setActiveCategories((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }
 
   function handleRegionChange(id) {
     setRegionId(id);
@@ -169,8 +122,6 @@ export default function App() {
 
     setDetections((prev) => [...prev, newDetection]);
     setClassifiedPreview(null);
-    setActiveCategories((prev) => new Set(prev).add(result.category));
-    setMinConfidence((prev) => Math.min(prev, result.confidence));
     setRegionId('all');
     setSelectedId(id);
     setManualFocus([result.lat, result.lng]);
@@ -200,7 +151,7 @@ export default function App() {
     <div className={`app${pickMode ? ' app--pick' : ''}`}>
       <div className="app__globe">
         <Globe
-          detections={visibleDetections}
+          detections={regionFiltered}
           selectedId={selectedId}
           pickedCoords={pickedCoords}
           onSelect={setSelectedId}
@@ -213,19 +164,12 @@ export default function App() {
       <TopBar
         regionId={regionId}
         onRegionChange={handleRegionChange}
-        totalCount={visibleDetections.length}
+        totalCount={regionFiltered.length}
         pickMode={pickMode}
       />
       {dataError && <div className="api-status">{dataError}</div>}
 
       <div className="dock dock--left">
-        <FilterPanel
-          activeCategories={activeCategories}
-          onToggleCategory={toggleCategory}
-          minConfidence={minConfidence}
-          onConfidenceChange={setMinConfidence}
-          counts={counts}
-        />
         <ClassifyPanel
           coords={pickedCoords}
           onCoordsChange={setPickedCoords}
@@ -240,7 +184,6 @@ export default function App() {
         <DetailPanel detection={selectedDetection} onUseInClassifier={handleUseHotspotInClassifier} />
       </div>
 
-      <StatsBar stats={stats} />
       <HUDFrame />
     </div>
   );

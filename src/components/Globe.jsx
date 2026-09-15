@@ -20,8 +20,10 @@ export default function Globe({ detections, selectedId, pickedCoords, onSelect, 
   useEffect(() => {
     const g = globeRef.current;
     if (!g) return;
-    g.controls().autoRotate = true;
-    g.controls().autoRotateSpeed = 0.35;
+    // The globe is intentionally stationary so a selected FIRMS hotspot stays
+    // under the user's cursor while its classifier result is reviewed.
+    g.controls().autoRotate = false;
+    g.controls().autoRotateSpeed = 0;
     g.controls().enableZoom = true;
     g.pointOfView({ lat: 20, lng: 40, altitude: 2.4 }, 0);
   }, []);
@@ -29,7 +31,6 @@ export default function Globe({ detections, selectedId, pickedCoords, onSelect, 
   useEffect(() => {
     const g = globeRef.current;
     if (!g || !flyTo) return;
-    g.controls().autoRotate = false;
     g.pointOfView({ lat: flyTo[0], lng: flyTo[1], altitude: 1.1 }, 900);
   }, [flyTo]);
 
