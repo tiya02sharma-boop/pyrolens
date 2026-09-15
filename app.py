@@ -12,6 +12,8 @@ fast, not to be the ML feature store.
 from __future__ import annotations
 
 import os
+import hmac
+from importlib import import_module
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
@@ -20,7 +22,7 @@ import joblib
 import numpy as np
 import pandas as pd
 import xgboost as xgb
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -36,6 +38,8 @@ PREDICTIONS_PATH = ROOT / "outputs" / "firms_combined_with_predictions_v2.csv"
 # this unset makes a fresh clone immediately usable with the verified CSV.
 DB_URL = os.getenv("DATABASE_URL")
 engine = create_engine(DB_URL, pool_pre_ping=True) if DB_URL and create_engine else None
+FIRMS_MAP_KEY = os.getenv("FIRMS_MAP_KEY")
+FIRMS_POLL_TOKEN = os.getenv("FIRMS_POLL_TOKEN")
 
 UI_CATEGORY = {"offshore_flare_or_platform": "flare"}
 REGION_LABELS = {
@@ -450,6 +454,21 @@ def regions_summary() -> list[dict]:
 @app.post("/api/classify")
 def classify(request: ClassificationRequest) -> dict:
     return predict(request)
+
+
+@app.post("/api/poll-firms")
+def poll_firms(x_agni_poll_token: Annotated[str | None, Header()] = None) -> dict:
+    """Run the FIRMS ingestion job when invoked by the scheduled GitHub workflow."""
+    if not FIRMS_POLL_TOKEN or not FIRMS_MAP_KEY or not DB_URL:
+        raise HTTPException(status_code=503, detail="FIRMS polling is not configured")
+    if not x_agni_poll_token or not hmac.compare_digest(x_agni_poll_token, FIRMS_POLL_TOKEN):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    poller = import_module("gis.03_realtime_poller")
+    try:
+        return poller.run_realtime_ingestion(database_url=DB_URL, map_key=FIRMS_MAP_KEY)
+    except Exception as error:
+        raise HTTPException(status_code=502, detail=f"FIRMS polling failed: {error}") from error
 
 
 DIST_DIR = ROOT / "dist"

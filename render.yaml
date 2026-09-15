@@ -9,20 +9,10 @@ services:
         fromDatabase:
           name: pyrolens-gis-db
           property: connectionString
-
-  - type: cron
-    name: pyrolens-realtime-poller
-    runtime: docker
-    dockerfilePath: ./Dockerfile
-    dockerCommand: python3 gis/03_realtime_poller.py
-    schedule: "0 */3 * * *"
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: pyrolens-gis-db
-          property: connectionString
       - key: FIRMS_MAP_KEY
-        sync: false
+        sync: false # Set manually in Render; never commit the NASA FIRMS key.
+      - key: FIRMS_POLL_TOKEN
+        sync: false # Shared secret required by the GitHub Actions scheduler.
 
 databases:
   - name: pyrolens-gis-db

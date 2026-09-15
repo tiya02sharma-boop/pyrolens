@@ -7,7 +7,8 @@ Run on a schedule matching FIRMS' update cadence:
 
     python3 gis/03_realtime_poller.py
 
-Requires ``FIRMS_MAP_KEY`` (from NASA FIRMS) and ``DATABASE_URL``.
+Requires ``FIRMS_MAP_KEY`` (from NASA FIRMS) and ``DATABASE_URL`` when run
+as a standalone command. The web API imports ``run_realtime_ingestion``.
 """
 from __future__ import annotations
 
@@ -22,11 +23,6 @@ from sqlalchemy import create_engine, text
 ROOT = Path(__file__).parent.parent
 MODEL_DIR = ROOT / "models"
 REFERENCE_CSV = ROOT / "outputs" / "firms_combined_with_predictions_v2.csv"
-
-MAP_KEY = os.environ["FIRMS_MAP_KEY"]
-DB_URL = os.environ["DATABASE_URL"]
-if DB_URL.startswith("postgres://"):
-    DB_URL = DB_URL.replace("postgres://", "postgresql+psycopg2://", 1)
 
 # Bounding boxes are west, south, east, north.
 REGIONS = {
@@ -43,13 +39,13 @@ DAY_RANGE = 1
 UI_CATEGORY = {"offshore_flare_or_platform": "flare"}
 
 
-def fetch_new_detections() -> pd.DataFrame:
+def fetch_new_detections(map_key: str) -> pd.DataFrame:
     """Pull the latest NRT VIIRS detections for every monitored region."""
     frames = []
     for region, (west, south, east, north) in REGIONS.items():
         url = (
             f"https://firms.modaps.eosdis.nasa.gov/api/area/csv/"
-            f"{MAP_KEY}/VIIRS_NOAA20_NRT/{west},{south},{east},{north}/{DAY_RANGE}"
+            f"{map_key}/VIIRS_NOAA20_NRT/{west},{south},{east},{north}/{DAY_RANGE}"
         )
         try:
             df = pd.read_csv(url)
@@ -58,10 +54,15 @@ def fetch_new_detections() -> pd.DataFrame:
             continue
         if df.empty:
             continue
+        df["acq_date"] = pd.to_datetime(df["acq_date"]).dt.date
         df["region"] = region
         frames.append(df)
         print(f"  {region}: {len(df)} raw detections pulled")
-    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    if not frames:
+        return pd.DataFrame()
+    return pd.concat(frames, ignore_index=True).drop_duplicates(
+        subset=["latitude", "longitude", "acq_date"]
+    )
 
 
 def drop_already_seen(engine, new_df: pd.DataFrame) -> pd.DataFrame:
@@ -74,6 +75,7 @@ def drop_already_seen(engine, new_df: pd.DataFrame) -> pd.DataFrame:
         )
     if existing.empty:
         return new_df
+    existing["acq_date"] = pd.to_datetime(existing["acq_date"]).dt.date
     merged = new_df.merge(
         existing, on=["latitude", "longitude", "acq_date"], how="left", indicator=True
     )
@@ -119,10 +121,10 @@ def classify_batch(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(results)
 
 
-def insert_new_rows(engine, df: pd.DataFrame) -> None:
+def insert_new_rows(engine, df: pd.DataFrame) -> int:
     if df.empty:
         print("Nothing new to insert.")
-        return
+        return 0
     insert_sql = text("""
         INSERT INTO detections
             (region, acq_date, latitude, longitude, frp, bright_ti4, bright_ti5,
@@ -136,17 +138,27 @@ def insert_new_rows(engine, df: pd.DataFrame) -> None:
     with engine.begin() as conn:
         conn.execute(insert_sql, df.to_dict(orient="records"))
     print(f"Inserted {len(df)} new classified detections.")
+    return len(df)
 
 
-def main() -> None:
-    engine = create_engine(DB_URL)
+def run_realtime_ingestion(*, database_url: str, map_key: str) -> dict[str, int]:
+    """Fetch, deduplicate, classify, and store the latest FIRMS detections."""
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql+psycopg2://", 1)
+    engine = create_engine(database_url)
     print("Fetching latest FIRMS NRT detections...")
-    raw = fetch_new_detections()
+    raw = fetch_new_detections(map_key)
     print(f"Total raw detections pulled: {len(raw)}")
     new = drop_already_seen(engine, raw)
     print(f"New (not already stored): {len(new)}")
-    if not new.empty:
-        insert_new_rows(engine, classify_batch(new))
+    inserted = insert_new_rows(engine, classify_batch(new)) if not new.empty else 0
+    return {"fetched": len(raw), "new": len(new), "inserted": inserted}
+
+
+def main() -> None:
+    database_url = os.environ["DATABASE_URL"]
+    map_key = os.environ["FIRMS_MAP_KEY"]
+    run_realtime_ingestion(database_url=database_url, map_key=map_key)
 
 
 if __name__ == "__main__":

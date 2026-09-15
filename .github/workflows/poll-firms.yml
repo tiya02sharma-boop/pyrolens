@@ -1,0 +1,19 @@
+name: Poll NASA FIRMS
+
+on:
+  schedule:
+    - cron: "0 */3 * * *"
+  workflow_dispatch:
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Request FIRMS ingestion
+        env:
+          AGNI_BASE_URL: ${{ secrets.AGNI_BASE_URL }}
+          FIRMS_POLL_TOKEN: ${{ secrets.FIRMS_POLL_TOKEN }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --request POST "$AGNI_BASE_URL/api/poll-firms" \
+            --header "X-AGNI-Poll-Token: $FIRMS_POLL_TOKEN"
