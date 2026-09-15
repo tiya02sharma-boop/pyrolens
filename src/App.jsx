@@ -4,6 +4,7 @@ import HUDFrame from './components/HUDFrame.jsx';
 import TopBar from './components/TopBar.jsx';
 import ClassifyPanel from './components/ClassifyPanel.jsx';
 import DetailPanel from './components/DetailPanel.jsx';
+import AnomalyPanel from './components/AnomalyPanel.jsx';
 import { REGIONS } from './data/mockData.js';
 
 let userDetectionSeq = 1;
@@ -14,6 +15,7 @@ export default function App() {
 
   const [regionId, setRegionId] = useState('all');
   const [selectedId, setSelectedId] = useState(null);
+  const [anomaliesOnly, setAnomaliesOnly] = useState(false);
 
   const [pickedCoords, setPickedCoords] = useState({ lat: '', lng: '' });
   const [pickMode, setPickMode] = useState(false);
@@ -43,6 +45,18 @@ export default function App() {
   }, [detections, regionId]);
 
   const [classifiedPreview, setClassifiedPreview] = useState(null);
+
+  const visibleDetections = useMemo(
+    () => anomaliesOnly ? regionFiltered.filter((d) => d.anomaly) : regionFiltered,
+    [regionFiltered, anomaliesOnly]
+  );
+
+  const priorityAnomalies = useMemo(
+    () => regionFiltered
+      .filter((d) => d.anomaly)
+      .sort((a, b) => (b.frp * b.confidence) - (a.frp * a.confidence)),
+    [regionFiltered]
+  );
 
   const selectedDetection = useMemo(
     () => regionFiltered.find((d) => d.id === selectedId) || (selectedId === classifiedPreview?.id ? classifiedPreview : null),
@@ -147,11 +161,21 @@ export default function App() {
     setPickMode(false);
   }
 
+  function handlePriorityAnomaly(detection) {
+    setSelectedId(detection.id);
+    setManualFocus([detection.lat, detection.lng]);
+    setPickedCoords({
+      lat: Number(detection.lat).toFixed(4),
+      lng: Number(detection.lng).toFixed(4),
+      detection,
+    });
+  }
+
   return (
     <div className={`app${pickMode ? ' app--pick' : ''}`}>
       <div className="app__globe">
         <Globe
-          detections={regionFiltered}
+          detections={visibleDetections}
           selectedId={selectedId}
           pickedCoords={pickedCoords}
           onSelect={setSelectedId}
@@ -170,6 +194,13 @@ export default function App() {
       {dataError && <div className="api-status">{dataError}</div>}
 
       <div className="dock dock--left">
+        <AnomalyPanel
+          anomalies={priorityAnomalies}
+          anomaliesOnly={anomaliesOnly}
+          onToggleAnomaliesOnly={() => setAnomaliesOnly((value) => !value)}
+          onSelect={handlePriorityAnomaly}
+          selectedId={selectedId}
+        />
         <ClassifyPanel
           coords={pickedCoords}
           onCoordsChange={setPickedCoords}

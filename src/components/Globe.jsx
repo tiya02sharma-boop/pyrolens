@@ -43,6 +43,13 @@ export default function Globe({ detections, selectedId, pickedCoords, onSelect, 
     [detections]
   );
 
+  // Render standard hotspots first and anomalies last, so the high-priority
+  // markers remain visible even where ordinary FIRMS points are dense.
+  const orderedDetections = useMemo(
+    () => [...detections].sort((a, b) => Number(a.anomaly) - Number(b.anomaly)),
+    [detections]
+  );
+
   const pickedPoint = useMemo(() => {
     const lat = Number.parseFloat(pickedCoords.lat);
     const lng = Number.parseFloat(pickedCoords.lng);
@@ -61,17 +68,17 @@ export default function Globe({ detections, selectedId, pickedCoords, onSelect, 
       atmosphereAltitude={0.12}
       width={size.width}
       height={size.height}
-      pointsData={detections}
+      pointsData={orderedDetections}
       pointLat="lat"
       pointLng="lng"
-      // FIRMS-style thermal layer: every satellite hotspot is red. The AGNI
-      // classification remains visible in its hover label and detail panel.
-      pointColor={(d) => (d.id === selectedId ? '#ffffff' : THERMAL_HOTSPOT)}
-      pointAltitude={(d) => 0.004 + d.confidence * 0.008}
-      pointRadius={(d) => (d.id === selectedId ? 0.13 : 0.024 + d.confidence * 0.016)}
+      // Ordinary hotspots fade into the background. Anomalies have a bright
+      // high-contrast core and are larger than surrounding thermal readings.
+      pointColor={(d) => (d.id === selectedId ? '#ffffff' : d.anomaly ? '#ffe66d' : THERMAL_HOTSPOT)}
+      pointAltitude={(d) => d.anomaly ? 0.028 : 0.004 + d.confidence * 0.008}
+      pointRadius={(d) => (d.id === selectedId ? 0.13 : d.anomaly ? 0.075 : 0.018 + d.confidence * 0.01)}
       pointResolution={8}
       pointsMerge={false}
-      pointLabel={(d) => `<b>THERMAL HOTSPOT · ${d.id}</b><br/>AGNI classification: ${CATEGORIES[d.category].label}<br/>${d.frp} MW FRP · ${Math.round(d.confidence * 100)}%`}
+      pointLabel={(d) => `${d.anomaly ? '<b>⚠ PRIORITY ANOMALY</b><br/>' : ''}<b>THERMAL HOTSPOT · ${d.id}</b><br/>AGNI classification: ${CATEGORIES[d.category].label}<br/>${d.frp} MW FRP · ${Math.round(d.confidence * 100)}%`}
       onPointClick={(d) => {
         onSelect(d.id);
         if (onPointClick) onPointClick(d);
@@ -88,10 +95,10 @@ export default function Globe({ detections, selectedId, pickedCoords, onSelect, 
       ringsData={rings}
       ringLat="lat"
       ringLng="lng"
-      ringColor={() => (t) => `rgba(255,59,59,${1 - t})`}
-      ringMaxRadius={0.75}
-      ringPropagationSpeed={1.8}
-      ringRepeatPeriod={1400}
+      ringColor={() => (t) => `rgba(255,230,109,${1 - t})`}
+      ringMaxRadius={1.05}
+      ringPropagationSpeed={1.35}
+      ringRepeatPeriod={1700}
     />
   );
 }
