@@ -16,7 +16,6 @@ services:
     dockerfilePath: ./Dockerfile
     dockerCommand: python3 gis/03_realtime_poller.py
     schedule: "0 */3 * * *"
-    plan: free
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -29,10 +28,3 @@ databases:
   - name: pyrolens-gis-db
     plan: free
     postgresMajorVersion: "16"
-    # After the database is created on Render:
-    #   1. Open its web shell (or connect via psql) and run:
-    #        CREATE EXTENSION postgis;
-    #   2. Apply the schema:
-    #        psql $DATABASE_URL -f gis/01_schema.sql
-    #   3. Load real data:
-    #        DATABASE_URL=<paste the same connection string> python3 gis/02_load_data.py
