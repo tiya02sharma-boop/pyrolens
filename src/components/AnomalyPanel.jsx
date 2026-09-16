@@ -31,7 +31,11 @@ export default function AnomalyPanel({ anomalies, anomaliesOnly, onToggleAnomali
                 <strong>{detection.id}</strong>
                 <small>{detection.region} · {detection.frp} MW</small>
               </span>
-              <span className="anomaly-row__confidence">{Math.round(detection.confidence * 100)}%</span>
+              <span className="anomaly-row__confidence">
+                {detection.acqTime
+                  ? `${detection.acqTime} UTC`
+                  : detection.firstDetected ?? '—'}
+              </span>
             </button>
           ))}
         </div>

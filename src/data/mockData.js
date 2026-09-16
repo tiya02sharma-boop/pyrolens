@@ -57,6 +57,7 @@ export function generateDetections(perRegion = 22) {
         confidence: Math.round((0.45 + Math.random() * 0.54) * 100) / 100,
         frp: Math.round((2 + Math.random() * 180) * 10) / 10, // Fire Radiative Power, MW
         firstDetected: randomDate(),
+        acqTime: randomTime(),
         persistent,
         activeMonths: persistent ? Math.round(1 + Math.random() * 48) : 0,
         anomaly,
@@ -73,4 +74,10 @@ function randomDate() {
   const end = new Date(2024, 11, 31).getTime();
   const d = new Date(start + Math.random() * (end - start));
   return d.toISOString().slice(0, 10);
+}
+
+function randomTime() {
+  const h = String(Math.floor(Math.random() * 24)).padStart(2, '0');
+  const m = String(Math.floor(Math.random() * 60)).padStart(2, '0');
+  return `${h}:${m}`;
 }
