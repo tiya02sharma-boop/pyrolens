@@ -3,6 +3,95 @@ import { CATEGORIES } from '../data/mockData.js';
 
 const geocodeCache = new Map();
 
+function humanizeCategory(category) {
+  return CATEGORIES[category]?.label || String(category || 'unknown event').replaceAll('_', ' ');
+}
+
+function confidenceLabel(confidence) {
+  if (confidence >= 0.8) return 'HIGH CONFIDENCE';
+  if (confidence >= 0.55) return 'MODERATE CONFIDENCE';
+  return 'LOW CONFIDENCE';
+}
+
+function ExplanationPanel({ detection, category }) {
+  const explanation = detection.explanation;
+  if (!explanation) return null;
+
+  const drivers = explanation.drivers || [];
+  const supporting = drivers.filter((driver) => driver.direction === 'supports');
+  const opposing = drivers.filter((driver) => driver.direction === 'opposes');
+  const confidence = Number(detection.confidence || 0);
+
+  return (
+    <section className="classification-insight" aria-label="Classifier explanation">
+      <div className="classification-insight__eyebrow">AGNI CLASSIFIER ASSESSMENT</div>
+      <div className="classification-verdict">
+        <div className="classification-verdict__icon" style={{ '--category-color': category.color }}>✓</div>
+        <div>
+          <div className="classification-verdict__label">MOST LIKELY EVENT</div>
+          <div className="classification-verdict__title" style={{ color: category.color }}>
+            {humanizeCategory(detection.category)}
+          </div>
+        </div>
+        <div className="classification-confidence">
+          <strong>{Math.round(confidence * 100)}%</strong>
+          <span>{confidenceLabel(confidence)}</span>
+        </div>
+      </div>
+
+      <div className="confidence-meter" aria-label={`${Math.round(confidence * 100)} percent confidence`}>
+        <div className="confidence-meter__fill" style={{ width: `${Math.round(confidence * 100)}%`, background: category.color }} />
+      </div>
+
+      <p className="classification-insight__plain">
+        The classifier weighs the hotspot’s heat signature, timing, surrounding land use, and how often this location has been active. It is not confirming a ground-truth cause; it is ranking the most likely explanation from those signals.
+      </p>
+
+      <div className="classification-reasoning">
+        <div className="classification-reasoning__heading">WHY THIS WAS SELECTED</div>
+        {supporting.length ? (
+          <div className="reason-list">
+            {supporting.slice(0, 4).map((driver) => {
+              const magnitude = Math.min(100, Math.max(10, Math.abs(driver.contribution) * 28));
+              return (
+                <div className="reason-card" key={driver.feature}>
+                  <div className="reason-card__topline">
+                    <span>{driver.feature}</span>
+                    <span className="reason-card__tag">SUPPORTS</span>
+                  </div>
+                  <strong>{driver.value}</strong>
+                  <div className="reason-card__bar"><span style={{ width: `${magnitude}%` }} /></div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="classification-insight__fallback">The model’s combined signals favored this category, but individual feature contributions are unavailable for this result.</p>
+        )}
+      </div>
+
+      {opposing.length > 0 && (
+        <div className="classification-counterpoint">
+          <span>COUNTER-SIGNALS</span>
+          {opposing.slice(0, 2).map((driver) => `${driver.feature}: ${driver.value}`).join(' · ')}
+        </div>
+      )}
+
+      <details className="classification-details">
+        <summary>View model context & data provenance</summary>
+        <p>{explanation.summary}</p>
+        <ul>
+          {(explanation.context || []).map((line) => <li key={line}>{line}</li>)}
+        </ul>
+        <p className="classification-details__note">
+          Model: {explanation.model || 'AGNI classifier'}.
+          {explanation.referenceKm != null ? ` Context was matched to a historic observation ${explanation.referenceKm} km away.` : ''}
+        </p>
+      </details>
+    </section>
+  );
+}
+
 export default function DetailPanel({ detection, onUseInClassifier }) {
   const [place, setPlace] = useState(null);
   const [facilityContext, setFacilityContext] = useState(null);
@@ -153,6 +242,8 @@ export default function DetailPanel({ detection, onUseInClassifier }) {
         </div>
       </div>
 
+      <ExplanationPanel detection={detection} category={cat} />
+
       {(detection.bright_ti4 != null || detection.isFirmsHotspot) && (
         <div className="firms-hotspot-detail">
           <div className="model-explain__title">FIRMS HOTSPOT TELEMETRY</div>
@@ -207,20 +298,6 @@ export default function DetailPanel({ detection, onUseInClassifier }) {
         </div>
       )}
 
-      {detection.explanation && (
-        <div className="model-explain model-explain--detail">
-          <div className="model-explain__title">MODEL EXPLANATION</div>
-          <p className="model-explain__summary">{detection.explanation.summary}</p>
-          <ul className="signal-list">
-            {(detection.explanation.drivers || []).slice(0, 4).map((driver) => (
-              <li key={driver.feature}>
-                {driver.feature}: {driver.value} ({driver.direction} this class)
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
       <div className="detail-actions">
         {onUseInClassifier && (
           <button
@@ -233,9 +310,6 @@ export default function DetailPanel({ detection, onUseInClassifier }) {
         )}
         <button className="ghost-btn" type="button">
           EXPORT DETECTION
-        </button>
-        <button className="ghost-btn" type="button">
-          OPEN MULTI-YEAR TIMELINE
         </button>
       </div>
     </section>
