@@ -283,48 +283,6 @@ export default function ClassifyPanel({ coords, onCoordsChange, pickMode, onTogg
             ))}
           </div>
 
-          {result.explanation && (
-            <div className="model-explain">
-              <div className="model-explain__title">WHY THE MODEL SAID THIS</div>
-              <p className="model-explain__summary">{result.explanation.summary}</p>
-              <div className="driver-list">
-                {(result.explanation.drivers || []).map((driver) => {
-                  const magnitude = Math.min(100, Math.abs(driver.contribution) * 28);
-                  return (
-                    <div className="driver" key={driver.feature}>
-                      <div className="driver__meta">
-                        <span className="driver__name">{driver.feature}</span>
-                        <span className={`driver__dir driver__dir--${driver.direction}`}>
-                          {driver.direction === 'supports' ? 'supports' : 'against'}
-                        </span>
-                      </div>
-                      <div className="driver__value">{driver.value}</div>
-                      <div className="score-bar__track">
-                        <div
-                          className={`driver__fill driver__fill--${driver.direction}`}
-                          style={{ width: `${Math.max(8, magnitude)}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              <ul className="signal-list">
-                {(result.explanation.context || []).map((line) => (
-                  <li key={line}>{line}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {!result.explanation && (
-            <ul className="signal-list">
-              {result.signals.map((s, i) => (
-                <li key={i}>{s}</li>
-              ))}
-            </ul>
-          )}
-
           <button type="button" className="ghost-btn ghost-btn--solid" onClick={handleAdd} disabled={added}>
             {added ? 'ADDED TO GLOBE' : 'ADD TO GLOBE'}
           </button>

@@ -281,19 +281,28 @@ export default function DetailPanel({ detection, onUseInClassifier }) {
 
       {detection.category === 'industrial' && (
         <div className="facility-context">
-          <div className="model-explain__title">NEARBY FACILITY CONTEXT</div>
-          {facilityContext?.loading && <p>Checking nearby mapped facilities…</p>}
+          <div className="facility-context__eyebrow">POST-CLASSIFICATION PROXIMITY CHECK</div>
+          <div className="facility-context__classification">ML CLASS: <strong>INDUSTRIAL ACTIVITY</strong></div>
+          {facilityContext?.loading && <p>Checking nearby mapped industrial facilities…</p>}
           {facilityContext?.facility && (
             <>
-              <strong>{facilityContext.facility.name}</strong>
-              <p>
-                Likely facility type: {facilityContext.facility.type} · {facilityContext.facility.distance_km} km away
-              </p>
+              <div className="facility-context__source">
+                <span className="facility-context__label">POSSIBLE SOURCE</span>
+                <strong>{facilityContext.facility.name}</strong>
+              </div>
+              <div className="facility-context__facts">
+                <div><span>LIKELY FACILITY TYPE</span><b>{facilityContext.facility.type}</b></div>
+                <div><span>DISTANCE TO HOTSPOT</span><b>{facilityContext.facility.distance_km} km</b></div>
+              </div>
               <small>{facilityContext.facility.evidence} · Source: {facilityContext.source}</small>
+              <p className="facility-context__caveat">This is a proximity-based source attribution after the ML result—not proof that the facility caused the thermal event.</p>
             </>
           )}
-          {facilityContext && !facilityContext.loading && !facilityContext.facility && (
-            <p>No mapped industrial facility was found within 10 km. This does not change the ML classification.</p>
+          {facilityContext?.error && !facilityContext.loading && (
+            <p>{facilityContext.error}. The industrial classification is still available, but source attribution could not be checked.</p>
+          )}
+          {facilityContext && !facilityContext.loading && !facilityContext.facility && !facilityContext.error && (
+            <p>No mapped industrial facility was found within 10 km. The industrial classification remains unchanged.</p>
           )}
         </div>
       )}
