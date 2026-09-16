@@ -140,6 +140,69 @@ def ui_category(category: str) -> str:
     return UI_CATEGORY.get(category, category)
 
 
+_db_synced = False
+
+
+def sync_database_schema_and_acq_times(force: bool = False) -> int:
+    """Ensure detections table has acq_time column and backfill from predictions CSV."""
+    global _db_synced
+    if engine is None:
+        return 0
+    if _db_synced and not force:
+        return 0
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE detections ADD COLUMN IF NOT EXISTS acq_time INTEGER;"))
+            null_count = conn.execute(text("SELECT count(*) FROM detections WHERE acq_time IS NULL")).scalar()
+            if not null_count:
+                _db_synced = True
+                return 0
+
+            print(f"[db-sync] Backfilling acq_time for {null_count} detections in PostGIS...")
+            if not PREDICTIONS_PATH.exists():
+                print(f"[db-sync] Prediction CSV not found at {PREDICTIONS_PATH}")
+                return 0
+
+            df = pd.read_csv(PREDICTIONS_PATH, usecols=["region", "point_id", "acq_time"])
+            df = df.dropna(subset=["region", "point_id", "acq_time"])
+
+            conn.execute(text("""
+                CREATE TEMP TABLE IF NOT EXISTS tmp_acq_times (
+                    region TEXT,
+                    point_id INTEGER,
+                    acq_time INTEGER
+                ) ON COMMIT DROP;
+                TRUNCATE TABLE tmp_acq_times;
+            """))
+
+            records = [
+                {"reg": str(r.region), "pid": int(r.point_id), "atime": int(r.acq_time)}
+                for _, r in df.iterrows()
+            ]
+
+            insert_tmp_sql = text("INSERT INTO tmp_acq_times (region, point_id, acq_time) VALUES (:reg, :pid, :atime)")
+            batch_size = 5000
+            for i in range(0, len(records), batch_size):
+                conn.execute(insert_tmp_sql, records[i:i + batch_size])
+
+            update_sql = text("""
+                UPDATE detections d
+                SET acq_time = t.acq_time
+                FROM tmp_acq_times t
+                WHERE d.region = t.region
+                  AND d.point_id = t.point_id
+                  AND d.acq_time IS NULL;
+            """)
+            result = conn.execute(update_sql)
+            updated = result.rowcount
+            print(f"[db-sync] Successfully backfilled {updated} detections with real acquisition times.")
+            _db_synced = True
+            return updated
+    except Exception as err:
+        print(f"[db-sync] Warning during automatic DB sync: {err}")
+        return 0
+
+
 @lru_cache
 def postgis_available() -> bool:
     """Check configured spatial storage once; transparently retain CSV mode on a fresh setup."""
@@ -148,6 +211,7 @@ def postgis_available() -> bool:
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1 FROM detections LIMIT 1"))
+        sync_database_schema_and_acq_times()
         return True
     except Exception:
         return False
@@ -378,6 +442,12 @@ app = FastAPI(title="Pyrolens Fire Detection API", version="3.0")
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"], allow_methods=["*"], allow_headers=["*"])
 
 
+@app.on_event("startup")
+def on_startup():
+    if engine is not None:
+        sync_database_schema_and_acq_times()
+
+
 @app.get("/api/health")
 def health() -> dict:
     if postgis_available():
@@ -388,6 +458,18 @@ def health() -> dict:
         df, *_ = assets()
         count, storage = len(df), "CSV fallback (set DATABASE_URL for PostGIS)"
     return {"status": "ok", "detections": count, "model": "XGBoost v2", "storage": storage}
+
+
+@app.get("/api/admin/sync-db")
+def admin_sync_db() -> dict:
+    """Explicit endpoint to trigger database migration and backfill of acq_time."""
+    if not postgis_available():
+        return {"status": "skipped", "message": "PostGIS is not enabled or available"}
+    updated = sync_database_schema_and_acq_times(force=True)
+    with engine.connect() as conn:
+        null_count = conn.execute(text("SELECT count(*) FROM detections WHERE acq_time IS NULL")).scalar()
+        total = conn.execute(text("SELECT count(*) FROM detections")).scalar()
+    return {"status": "ok", "updated": updated, "total": total, "null_acq_time_count": null_count}
 
 
 @app.get("/api/firms/nearest")
