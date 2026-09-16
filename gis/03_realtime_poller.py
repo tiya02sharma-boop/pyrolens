@@ -110,6 +110,7 @@ def classify_batch(df: pd.DataFrame) -> pd.DataFrame:
         category = max(scores, key=scores.get)
         results.append({
             "region": point["region"], "acq_date": point["acq_date"],
+            "acq_time": int(point["acq_time"]) if pd.notna(point.get("acq_time")) else None,
             "latitude": point.latitude, "longitude": point.longitude,
             "frp": float(point.get("frp", 0)),
             "bright_ti4": float(point.get("bright_ti4", 0)),
@@ -127,11 +128,11 @@ def insert_new_rows(engine, df: pd.DataFrame) -> int:
         return 0
     insert_sql = text("""
         INSERT INTO detections
-            (region, acq_date, latitude, longitude, frp, bright_ti4, bright_ti5,
+            (region, acq_date, acq_time, latitude, longitude, frp, bright_ti4, bright_ti5,
              daynight, category, confidence, persistence_30d, is_anomalous,
              anomaly_score, geom)
         VALUES
-            (:region, :acq_date, :latitude, :longitude, :frp, :bright_ti4, :bright_ti5,
+            (:region, :acq_date, :acq_time, :latitude, :longitude, :frp, :bright_ti4, :bright_ti5,
              :daynight, :category, :confidence, :persistence_30d, :is_anomalous,
              :anomaly_score, ST_SetSRID(ST_MakePoint(:longitude, :latitude), 4326))
     """)

@@ -169,7 +169,9 @@ export default function DetailPanel({ detection, onUseInClassifier }) {
   }, [detection?.id, detection?.lat, detection?.lng]);
 
   useEffect(() => {
-    if (!detection || detection.category !== 'industrial') {
+    // This is a second-stage attribution for a freshly run classifier result,
+    // not background context for every industrial point already on the map.
+    if (!detection || detection.category !== 'industrial' || !detection.isNewDetection || !detection.explanation) {
       setFacilityContext(null);
       return undefined;
     }
@@ -200,6 +202,9 @@ export default function DetailPanel({ detection, onUseInClassifier }) {
   const cat = CATEGORIES[detection.category];
   const latFormatted = Number(detection.lat).toFixed(4);
   const lngFormatted = Number(detection.lng).toFixed(4);
+  const hasFreshIndustrialClassification = detection.category === 'industrial'
+    && detection.isNewDetection
+    && detection.explanation;
 
   return (
     <section className="panel detail-panel">
@@ -279,7 +284,7 @@ export default function DetailPanel({ detection, onUseInClassifier }) {
         </div>
       )}
 
-      {detection.category === 'industrial' && (
+      {hasFreshIndustrialClassification && (
         <div className="facility-context">
           <div className="facility-context__eyebrow">POST-CLASSIFICATION PROXIMITY CHECK</div>
           <div className="facility-context__classification">ML CLASS: <strong>INDUSTRIAL ACTIVITY</strong></div>

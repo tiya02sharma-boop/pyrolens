@@ -39,7 +39,7 @@ def main():
         conn.execute(text("TRUNCATE TABLE detections RESTART IDENTITY;"))
 
     rows = df[[
-        "point_id", "region", "acq_date", "latitude", "longitude", "frp",
+        "point_id", "region", "acq_date", "acq_time", "latitude", "longitude", "frp",
         "bright_ti4", "bright_ti5", "daynight", "category",
         "persistence_count_30d", "is_anomalous", "anomaly_score",
     ]].copy()
@@ -49,11 +49,11 @@ def main():
     print("Inserting rows with geometry...")
     insert_sql = text("""
         INSERT INTO detections
-            (point_id, region, acq_date, latitude, longitude, frp,
+            (point_id, region, acq_date, acq_time, latitude, longitude, frp,
              bright_ti4, bright_ti5, daynight, category, confidence,
              persistence_30d, is_anomalous, anomaly_score, geom)
         VALUES
-            (:point_id, :region, :acq_date, :latitude, :longitude, :frp,
+            (:point_id, :region, :acq_date, :acq_time, :latitude, :longitude, :frp,
              :bright_ti4, :bright_ti5, :daynight, :category, :confidence,
              :persistence_30d, :is_anomalous, :anomaly_score,
              ST_SetSRID(ST_MakePoint(:longitude, :latitude), 4326))

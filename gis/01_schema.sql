@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS detections (
     point_id        INTEGER,
     region          TEXT,
     acq_date        DATE,
+    acq_time        INTEGER,
     latitude        DOUBLE PRECISION NOT NULL,
     longitude       DOUBLE PRECISION NOT NULL,
     frp             DOUBLE PRECISION,
@@ -19,6 +20,9 @@ CREATE TABLE IF NOT EXISTS detections (
     anomaly_score   DOUBLE PRECISION,
     geom            GEOMETRY(Point, 4326) NOT NULL
 );
+
+-- Migration for existing deployments:
+ALTER TABLE detections ADD COLUMN IF NOT EXISTS acq_time INTEGER;
 
 -- The spatial index -- this is what makes radius/bbox queries fast
 -- instead of scanning every row, which a flat CSV can never do.

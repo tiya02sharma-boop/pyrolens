@@ -153,11 +153,20 @@ def postgis_available() -> bool:
         return False
 
 
+def format_acq_time(val: object) -> str:
+    if val is None or pd.isna(val) or val == "":
+        return "12:00"
+    raw_time = str(val).split(".")[0].strip()
+    if not raw_time.isdigit():
+        return "12:00"
+    raw_time = raw_time.zfill(4)
+    return f"{raw_time[:2]}:{raw_time[2:]}"
+
+
 def detection_record(row: pd.Series, confidence: float = 0.82) -> dict:
     category = ui_category(str(row.category))
     persistence = float(row.persistence_count_30d)
     persistent = persistence >= 4 or category in {"mining", "flare"}
-    acq_time = str(row.get("acq_time", "0")).split(".")[0].zfill(4)
     return {
         "id": f"FIRMS-{int(row.point_id):05d}",
         "region": REGION_LABELS.get(str(row.region), str(row.region).replace("_", " ").title()),
@@ -166,7 +175,7 @@ def detection_record(row: pd.Series, confidence: float = 0.82) -> dict:
         "confidence": round(float(confidence), 3), "frp": round(float(row.frp), 2),
         "bright_ti4": round(float(row.bright_ti4), 1) if pd.notna(row.get("bright_ti4")) else None,
         "bright_ti5": round(float(row.bright_ti5), 1) if pd.notna(row.get("bright_ti5")) else None,
-        "acqTime": f"{acq_time[:2]}:{acq_time[2:]}" if len(acq_time) >= 3 else "12:00",
+        "acqTime": format_acq_time(row.get("acq_time")),
         "daynight": str(row.get("daynight", "D")).upper() if pd.notna(row.get("daynight")) else "D",
         "firstDetected": str(row.acq_date), "persistent": persistent,
         "activeMonths": round(persistence / 30, 1) if persistent else 0,
@@ -407,12 +416,11 @@ def nearest_firms_detection(
                     (detections["longitude"] - lng) * np.cos(np.radians(lat))
                 ) ** 2
                 point = detections.loc[distance.idxmin()]
-                acq_time = str(point.get("acq_time", "0")).split(".")[0].zfill(4)
                 return {
                     "lat": float(point["latitude"]), "lng": float(point["longitude"]),
                     "frp": float(point["frp"]), "bright_ti4": float(point["bright_ti4"]),
                     "bright_ti5": float(point["bright_ti5"]), "acq_date": str(point["acq_date"]),
-                    "acq_time": f"{acq_time[:2]}:{acq_time[2:]}",
+                    "acq_time": format_acq_time(point.get("acq_time")),
                     "daynight": str(point.get("daynight", "D")).upper(),
                     "distance_km": round(float(np.sqrt(distance.loc[point.name]) * 111), 1),
                     "source": "NASA FIRMS · VIIRS NOAA-20 · latest 24 hours",
@@ -427,7 +435,6 @@ def nearest_firms_detection(
         float(np.sqrt((float(point.latitude) - lat) ** 2 + ((float(point.longitude) - lng) * np.cos(np.radians(lat))) ** 2) * 111),
         1,
     )
-    acq_time = str(point.get("acq_time", "0")).split(".")[0].zfill(4)
     return {
         "lat": float(point["latitude"]),
         "lng": float(point["longitude"]),
@@ -435,7 +442,7 @@ def nearest_firms_detection(
         "bright_ti4": round(float(point["bright_ti4"]), 1),
         "bright_ti5": round(float(point["bright_ti5"]), 1),
         "acq_date": str(point["acq_date"]),
-        "acq_time": f"{acq_time[:2]}:{acq_time[2:]}" if len(acq_time) >= 3 else "12:00",
+        "acq_time": format_acq_time(point.get("acq_time")),
         "daynight": str(point.get("daynight", "D")).upper(),
         "distance_km": distance_km,
         "source": "NASA FIRMS Hotspot · VIIRS NOAA-20",
@@ -494,9 +501,6 @@ def detections(region: str | None = None, limit: Annotated[int, Query(ge=1, le=1
 
     result = []
     for r in rows:
-        # Format acq_time (stored as integer HHMM e.g. 838) into HH:MM for the time input
-        raw_time = str(r["acq_time"]).split(".")[0].zfill(4) if r["acq_time"] is not None else "1200"
-        acq_time_fmt = f"{raw_time[:2]}:{raw_time[2:]}" if len(raw_time) >= 4 else "12:00"
         result.append({
             # Historical imports retain their source point_id. Real-time FIRMS
             # rows have no source point_id, so use Postgres's serial primary key.
@@ -508,7 +512,7 @@ def detections(region: str | None = None, limit: Annotated[int, Query(ge=1, le=1
             "frp": round(r["frp"], 2),
             "bright_ti4": round(float(r["bright_ti4"]), 1) if r["bright_ti4"] is not None else None,
             "bright_ti5": round(float(r["bright_ti5"]), 1) if r["bright_ti5"] is not None else None,
-            "acqTime": acq_time_fmt,
+            "acqTime": format_acq_time(r["acq_time"]),
             "daynight": str(r["daynight"]).upper() if r["daynight"] is not None else "D",
             "firstDetected": str(r["acq_date"]),
             "persistent": (r["persistence_30d"] or 0) >= 4,
